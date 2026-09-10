@@ -27,20 +27,28 @@ _Avoid_: kid, dependent, minor
 ### Work
 
 **Task**:
-Work a member must do and tick off. It is done or it is not.
+A standing piece of work the household expects done, once or on a recurrence. A
+task is never ticked off — its occurrences are.
 _Avoid_: chore, todo, item, job
 
-**Assignee**:
-The member responsible for doing a task.
-_Avoid_: owner, doer, responsible party
+**Occurrence**:
+A single dated instance of a task. The thing actually ticked, the thing that
+slips, and the unit a streak counts.
+_Avoid_: instance, entry, todo, assignment
 
 **Recurrence**:
-The rule describing how often a task comes back.
+The rule describing how often a task comes back, and therefore which occurrences
+exist.
 _Avoid_: schedule, repeat, frequency, cadence
 
+**Assignee**:
+The member responsible for an occurrence — inherited from its task unless that
+occurrence names someone else.
+_Avoid_: owner, doer, responsible party
+
 **Slipped**:
-A task whose moment passed without it being done. Describes the task, never the
-member.
+An occurrence whose moment passed without it being done. Describes the
+occurrence, never the member.
 _Avoid_: missed, overdue, late, failed
 
 ### Things that happen
@@ -62,13 +70,13 @@ _Avoid_: driver, escort, chaperone
 ### Rewards
 
 **Points**:
-Earned by a child for completing a task, accumulating into a balance that can be
-spent. Once earned they are never taken away.
+Earned by a child for completing an occurrence, accumulating into a balance that
+can be spent. Once earned they are never taken away.
 _Avoid_: stars, coins, XP, credits
 
 **Streak**:
-The count of consecutive days a child kept a commitment. Breaking it resets the
-count to zero.
+The count of consecutive days a child completed every occurrence of one
+recurring task. Breaking it resets the count to zero.
 _Avoid_: run, chain, combo
 
 **Reward**:
@@ -106,6 +114,6 @@ _Avoid_: groceries, cart, basket, order
 ### Views
 
 **Needs you**:
-Everything demanding one member's attention right now — slipped tasks and bills
-falling due, gathered together. Derived, never stored.
+Everything demanding one member's attention right now — slipped occurrences and
+bills falling due, gathered together. Derived, never stored.
 _Avoid_: inbox, alerts, urgent, action items
