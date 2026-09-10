@@ -1,0 +1,11 @@
+# OS cruft
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editor
+.vscode/
+*.swp
+
+# Local Claude Code state
+.claude/settings.local.json

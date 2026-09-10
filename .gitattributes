@@ -1,0 +1,9 @@
+# Normalize to LF in the repo; check out native on Windows.
+* text=auto
+
+# Web sources stay LF on disk too, so diffs match what browsers and editors see.
+*.html text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf

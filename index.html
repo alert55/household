@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F1EDE6">
+<title>Home · Household</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="screen">
+
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Thursday, Sep 10</p>
+      <h1 class="greeting">Morning, Jamie</h1>
+    </div>
+    <a class="avatar avatar--sage" href="#profile" aria-label="Your profile"><span aria-hidden="true">J</span></a>
+  </header>
+
+  <main class="board">
+
+    <!-- Needs you -->
+    <section class="card card--dark span-2" aria-labelledby="needs-h">
+      <div class="card__head">
+        <h2 class="eyebrow eyebrow--gold" id="needs-h">Needs you · 2</h2>
+        <a class="link link--dim" href="#needs">Clear both →</a>
+      </div>
+      <ul class="needs">
+        <li class="needs__row">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="needs__text">
+            <p class="needs__title">Trash to the curb</p>
+            <p class="needs__meta">Alex · missed yesterday</p>
+          </div>
+          <button class="chip" type="button">Nudge</button>
+        </li>
+        <li class="needs__row">
+          <span class="dot" aria-hidden="true"></span>
+          <div class="needs__text">
+            <p class="needs__title">Water bill · ฿740</p>
+            <p class="needs__meta">Due today</p>
+          </div>
+          <button class="chip" type="button">Pay</button>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Today -->
+    <section class="card today span-2" aria-labelledby="today-h">
+      <div class="card__head card__head--baseline">
+        <h2 class="eyebrow" id="today-h">Today</h2>
+        <p class="card__aside" id="today-count">4 of 10 done</p>
+      </div>
+
+      <ul class="people">
+        <li class="person">
+          <span class="avatar avatar--sm avatar--sage" aria-hidden="true">J</span>
+          <span class="track" role="progressbar" aria-label="Jamie" aria-valuenow="1" aria-valuemin="0" aria-valuemax="2">
+            <span class="track__fill track__fill--sage" style="width:50%"></span>
+          </span>
+          <span class="person__count">1/2</span>
+        </li>
+        <li class="person">
+          <span class="avatar avatar--sm avatar--clay" aria-hidden="true">S</span>
+          <span class="track" role="progressbar" aria-label="Sam" aria-valuenow="1" aria-valuemin="0" aria-valuemax="3">
+            <span class="track__fill track__fill--terracotta" style="width:33%"></span>
+          </span>
+          <span class="person__count">1/3</span>
+        </li>
+        <li class="person">
+          <span class="avatar avatar--sm avatar--gold" aria-hidden="true">A</span>
+          <span class="track" role="progressbar" aria-label="Alex" aria-valuenow="1" aria-valuemin="0" aria-valuemax="3">
+            <span class="track__fill track__fill--gold" style="width:33%"></span>
+          </span>
+          <span class="person__count">1/3</span>
+        </li>
+      </ul>
+
+      <ul class="tasks">
+        <li class="task">
+          <input class="check" type="checkbox" id="t-pickup">
+          <label class="task__label" for="t-pickup">School pickup</label>
+          <span class="task__meta">Sam · 2:45p</span>
+        </li>
+        <li class="task">
+          <input class="check" type="checkbox" id="t-dog">
+          <label class="task__label" for="t-dog">Feed the dog</label>
+          <span class="task__meta">Alex</span>
+        </li>
+      </ul>
+
+      <a class="link seeall" href="#tasks">See all 6 →</a>
+    </section>
+
+    <!-- Streak -->
+    <section class="card card--cream span-2 streak" aria-labelledby="streak-h">
+      <p class="ring" aria-hidden="true">
+        <span class="ring__num">5</span>
+        <span class="ring__unit">Days</span>
+      </p>
+      <div class="streak__body">
+        <h2 class="streak__title" id="streak-h">Alex is on a streak</h2>
+        <p class="streak__meta">Homework 5 days straight. 2 more → movie night.</p>
+        <span class="pips" role="progressbar" aria-label="Streak progress" aria-valuenow="5" aria-valuemin="0" aria-valuemax="7">
+          <i class="pip is-on"></i><i class="pip is-on"></i><i class="pip is-on"></i>
+          <i class="pip is-on"></i><i class="pip is-on"></i><i class="pip"></i><i class="pip"></i>
+        </span>
+      </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="card stat" aria-labelledby="low-h">
+      <svg class="stat__icon stat__icon--sage" width="19" height="19" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M6 3h8l1 14H5L6 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M6.4 8h7.2" stroke="currentColor" stroke-width="1.6"/>
+      </svg>
+      <p class="stat__num">3</p>
+      <h2 class="stat__label" id="low-h">Running low</h2>
+      <p class="stat__meta">Milk, dish soap, rice</p>
+    </section>
+
+    <section class="card stat" aria-labelledby="week-h">
+      <svg class="stat__icon stat__icon--terracotta" width="19" height="19" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <rect x="2.8" y="5" width="14.4" height="10" rx="2.4" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M13 10h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <p class="stat__num">฿3,120</p>
+      <h2 class="stat__label" id="week-h">This week</h2>
+      <span class="track track--thick" role="progressbar" aria-label="Weekly budget used" aria-valuenow="47" aria-valuemin="0" aria-valuemax="100">
+        <span class="track__fill track__fill--terracotta" style="width:47%"></span>
+      </span>
+    </section>
+
+    <!-- Upcoming -->
+    <a class="card upcoming span-2" href="#event">
+      <span class="datechip" aria-hidden="true">
+        <span class="datechip__dow">Fri</span>
+        <span class="datechip__day">11</span>
+      </span>
+      <span class="upcoming__body">
+        <span class="upcoming__title">Alex · swim class</span>
+        <span class="upcoming__meta">5:30p · Sam driving</span>
+      </span>
+      <svg class="chevron" width="7" height="12" viewBox="0 0 8 14" aria-hidden="true">
+        <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </a>
+  </main>
+
+  <nav class="tabbar" aria-label="Primary">
+    <a class="tab is-active" href="#home" aria-current="page">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 8.5L10 3l7 5.5V17H3V8.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <span>Home</span>
+    </a>
+    <a class="tab" href="#tasks">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7.2" stroke="currentColor" stroke-width="1.6"/><path d="M6.7 10.2l2.2 2.2 4.4-4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span>Tasks</span>
+    </a>
+    <div class="tab-slot">
+      <button class="fab" type="button" aria-label="Add something">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2v14M2 9h14" stroke="#fff" stroke-width="2.1" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <a class="tab" href="#kitchen">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 4h2l2 9h9l2-6H6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8.5" cy="16" r="1.2" fill="currentColor"/><circle cx="15" cy="16" r="1.2" fill="currentColor"/></svg>
+      <span>Kitchen</span>
+    </a>
+    <a class="tab" href="#money">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.8" y="5" width="14.4" height="10" rx="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M13 10h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span>Money</span>
+    </a>
+  </nav>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
