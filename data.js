@@ -40,6 +40,8 @@
 
   function todayIso() { return new Date().toISOString().slice(0, 10); }
 
+  function isoIn(days) { return addDays(todayIso(), days); }
+
   // '14:45' from a time input -> 885 minutes, and back to a readable '2:45p'.
   function toMinutes(hhmm) {
     const parts = String(hhmm).split(':');
@@ -127,7 +129,11 @@
     // No open list to begin with, so pressing "Add to list" is what opens one.
     list: null,
     week: { spent: 3120, ceiling: 6000, daysLeft: 3 },
-    nextEvent: { dow: 'Fri', day: 11, title: 'Alex · swim class', meta: '5:30p · Sam driving' },
+    // ADR 0001: events are not tasks. No completed flag, because an event is
+    // never ticked off — it arrives and it passes.
+    events: [
+      { id: 'ev-swim', title: 'Swim class', subject: 'alex', responsible: 'sam', date: isoIn(1), at: 1050 }
+    ],
     billsDue: [
       { id: 'demo-water', label: 'Water bill', amount: 740, dueLabel: 'Due today', urgent: true },
       { id: 'demo-net', label: 'Internet', amount: 1200, dueLabel: 'Due Friday', urgent: false }
@@ -156,6 +162,28 @@
 
   function demoLow() {
     return demo.pantryItems.filter(p => p.low);
+  }
+
+  // Soonest first, and only what has not happened yet.
+  function demoEvents() {
+    const today = todayIso();
+    return demo.events
+      .filter(e => e.date >= today)
+      .sort((a, b) => (a.date === b.date ? a.at - b.at : a.date.localeCompare(b.date)))
+      .map(e => {
+        const subject = demo.members[e.subject];
+        const responsible = demo.members[e.responsible];
+        return {
+          id: e.id,
+          date: e.date,
+          dow: dayName(e.date).slice(0, 3),
+          day: Number(e.date.slice(8, 10)),
+          when: relativeDay(e.date, today),
+          title: [subject ? subject.name : null, e.title].filter(Boolean).join(' · '),
+          meta: [fromMinutes(e.at), responsible ? responsible.name + ' takes them' : null]
+            .filter(Boolean).join(' · ')
+        };
+      });
   }
 
   function demoByPerson() {
@@ -253,14 +281,27 @@
           spent: money(demo.week.spent, 'THB'),
           percent: Math.round((demo.week.spent / demo.week.ceiling) * 100)
         },
-        nextEvent: demo.nextEvent
+        nextEvent: demoEvents()[0] || null
       };
+    },
+
+    async createEvent(input) {
+      demo.events.push({
+        id: 'ev-' + Date.now(),
+        title: input.title,
+        subject: input.subject || null,
+        responsible: input.responsible || null,
+        date: input.onDate,
+        at: toMinutes(input.atTime)
+      });
+      return true;
     },
 
     async loadTasks() {
       const now = new Date();
       return {
         date: DAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate(),
+        events: demoEvents().slice(0, 5),
         slipped: demo.needsYou.filter(n => n.kind === 'occurrence').map(n => ({
           id: n.id,
           title: n.title,
@@ -621,10 +662,11 @@
         const c = await context();
         const today = todayIn(c.household.timezone);
 
-        const [todayRes, slippedRes, streakRes] = await Promise.all([
+        const [todayRes, slippedRes, streakRes, eventRes] = await Promise.all([
           sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today),
           sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('slipped', true).lt('due_on', today).order('due_on'),
-          sb.from('streak_current').select('*').eq('household_id', c.household.id)
+          sb.from('streak_current').select('*').eq('household_id', c.household.id),
+          sb.from('event').select('*').eq('household_id', c.household.id).gte('starts_at', new Date().toISOString()).order('starts_at').limit(5)
         ]);
 
         const rows = todayRes.data || [];
@@ -673,7 +715,21 @@
             meta: (initialName(c, o.effective_assignee_id) || 'Unassigned') +
               ' · slipped ' + relativeDay(o.due_on, today)
           })),
-          people: people
+          people: people,
+          events: (eventRes.data || []).map(e => {
+            const on = e.occurs_on || e.starts_at.slice(0, 10);
+            return {
+              id: e.id,
+              date: on,
+              dow: dayName(on).slice(0, 3),
+              day: Number(on.slice(8, 10)),
+              when: relativeDay(on, today),
+              title: [initialName(c, e.subject_id), e.title].filter(Boolean).join(' · '),
+              meta: [timeLabel(e.starts_at),
+                e.responsible_id ? initialName(c, e.responsible_id) + ' takes them' : null]
+                .filter(Boolean).join(' · ')
+            };
+          })
         };
       },
 
@@ -729,6 +785,20 @@
           name: input.name,
           is_low: Boolean(input.low),
           marked_low_at: input.low ? new Date().toISOString() : null
+        });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      // The date and time go over as they were typed; the function reads them in
+      // the household's timezone. See 0007.
+      async createEvent(input) {
+        const { error } = await sb.rpc('add_event', {
+          p_title: input.title,
+          p_on_date: input.onDate,
+          p_at_time: input.atTime,
+          p_subject: input.subject || null,
+          p_responsible: input.responsible || null
         });
         if (error) throw new Error(error.message);
         return true;

@@ -291,6 +291,26 @@
       card.appendChild(list);
       return card;
     }));
+
+    // ADR 0001 said a day view has to render two shapes, not one shape twice.
+    // These carry no checkbox on purpose: an event is never ticked off.
+    const events = t.events || [];
+    $('coming-label').hidden = !events.length;
+    $('coming-card').hidden = !events.length;
+    if (events.length) {
+      fill($('coming-list'), events.map(e => {
+        const li = el('li', 'eventrow');
+        li.appendChild(el('span', 'eventrow__rail'));
+
+        const body = el('span', 'eventrow__body');
+        body.appendChild(el('span', 'eventrow__title', e.title));
+        body.appendChild(el('span', 'eventrow__meta', e.meta));
+        li.appendChild(body);
+
+        li.appendChild(el('span', 'eventrow__when', e.when));
+        return li;
+      }));
+    }
   }
 
   // ── Rendering: kitchen ─────────────────────────────────────────────────
@@ -464,6 +484,7 @@
   // child a form that cannot be submitted.
   const KINDS = [
     { key: 'task', label: 'Task', adults: true, screen: 'tasks' },
+    { key: 'event', label: 'Event', adults: true, screen: null },
     { key: 'expense', label: 'Expense', adults: false, screen: 'money' },
     { key: 'pantry', label: 'Pantry item', adults: false, screen: 'kitchen' },
     { key: 'bill', label: 'Bill', adults: true, screen: 'money' }
@@ -530,6 +551,20 @@
         pointsRow
       ]);
       syncPoints();
+
+    } else if (sheetKind === 'event') {
+      // Both people are optional: an event may be about the whole household,
+      // and it may be one nobody has to take anyone to (CONTEXT.md).
+      const anyone = [{ value: '', label: 'Everyone' }].concat(people);
+      const nobody = [{ value: '', label: 'Nobody' }].concat(people);
+
+      fill(box, [
+        field('What', input('text', 'title', { placeholder: 'Swim class', required: 'required' })),
+        field('Who it is about', select('subject', anyone)),
+        field('Who takes them', select('responsible', nobody)),
+        field('Date', input('date', 'onDate', { value: new Date().toISOString().slice(0, 10), required: 'required' })),
+        field('Time', input('time', 'atTime', { value: '17:30', required: 'required' }))
+      ]);
 
     } else if (sheetKind === 'expense') {
       fill(box, [
@@ -626,6 +661,17 @@
           recurrence: get('recurrence'),
           time: get('time') || null,
           points: Number(get('points') || 0)
+        });
+      } else if (sheetKind === 'event') {
+        if (!get('title')) throw new Error('Give it a name.');
+        if (!get('onDate')) throw new Error('What day is it?');
+        if (!get('atTime')) throw new Error('What time?');
+        await data.createEvent({
+          title: get('title'),
+          subject: get('subject') || null,
+          responsible: get('responsible') || null,
+          onDate: get('onDate'),
+          atTime: get('atTime')
         });
       } else if (sheetKind === 'expense') {
         const amount = Number(get('amount'));
