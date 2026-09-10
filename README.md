@@ -58,6 +58,12 @@ Decisions that were genuinely contested live in [docs/adr](./docs/adr):
 - [0004](./docs/adr/0004-supabase-for-storage-auth-and-sync.md) — Supabase for
   storage, auth and sync
 
+The glossary is turned into tables in
+[supabase/migrations](./supabase/migrations). Row-level security is enabled on
+every table in the same migration that creates it — with the anon key shipping
+in public client code, those policies are the household boundary rather than a
+hardening step for later.
+
 ## Where this could go next
 
 Nothing is persisted yet. Tick a task, reload, and it comes back — the screens
