@@ -78,6 +78,9 @@
         button.type = 'button';
         button.addEventListener('click', () => act(item, button));
         row.appendChild(button);
+      } else if (item.status) {
+        // Not a button — you have already nudged. It says whether they know.
+        row.appendChild(el('span', 'chip chip--quiet', item.status));
       }
       return row;
     }));
@@ -220,6 +223,11 @@
     $('pantry-items').textContent = board.pantry.items;
     $('week-spent').textContent = board.week.spent;
     setBar('week-track', 'week-bar', board.week.percent);
+
+    // Having looked at the board is what "seen" means. Deliberately not awaited
+    // and deliberately quiet: failing to mark a nudge seen is not worth putting
+    // an error in front of someone, and it changes nothing on this screen.
+    if (data.markNudgesSeen) data.markNudgesSeen().catch(() => {});
   }
 
   // ── Rendering: money ───────────────────────────────────────────────────

@@ -61,7 +61,16 @@
   // like the design and any rendering bug shows up as a visible difference.
   const demo = {
     household: { timezone: 'Asia/Bangkok', currency: 'THB' },
-    me: { name: 'Jamie', initial: 'J', accent: 'sage', role: 'adult' },
+
+    // Who you are looking at the demo as. `?as=alex` gives a child's board:
+    // the receiving end of a nudge, and a member who may not pay bills. The
+    // default is the adult the design was drawn for.
+    members: {
+      jamie: { key: 'jamie', name: 'Jamie', initial: 'J', accent: 'sage', role: 'adult' },
+      sam: { key: 'sam', name: 'Sam', initial: 'S', accent: 'clay', role: 'adult' },
+      alex: { key: 'alex', name: 'Alex', initial: 'A', accent: 'gold', role: 'child' }
+    },
+    meKey: (new URLSearchParams(location.search).get('as') || 'jamie').toLowerCase(),
     doneElsewhere: 4,
     totalToday: 10,
     people: [
@@ -75,10 +84,13 @@
     ],
     remaining: 6,
     needsYou: [
-      { id: 'demo-trash', kind: 'occurrence', title: 'Trash to the curb', meta: 'Alex · slipped yesterday', action: 'Nudge', urgent: true },
-      { id: 'demo-water', kind: 'bill', title: 'Water bill · ฿740', meta: 'Due today', action: 'Pay', urgent: true }
+      { id: 'demo-trash', kind: 'occurrence', title: 'Trash to the curb', assignee: 'alex', slipped: 'slipped yesterday', urgent: true },
+      { id: 'demo-water', kind: 'bill', title: 'Water bill · ฿740', meta: 'Due today', urgent: true }
     ],
-    nudgedToday: [],
+    // { occurrenceId, from, to, seen }. Seeded with one Sam already sent Alex,
+    // so the receiving end is visible at ?as=alex without having to arrange it.
+    // It changes nothing for Jamie, who is not the one being nudged.
+    nudges: [{ occurrenceId: 'demo-trash', from: 'sam', to: 'alex', seen: false }],
     streak: { name: 'Alex', days: 5, target: 7, note: 'Homework 5 days straight. 2 more → movie night.' },
     pantry: { count: 3, items: 'Milk, dish soap, rice' },
     week: { spent: 3120, ceiling: 6000, daysLeft: 3 },
@@ -96,6 +108,46 @@
     ]
   };
 
+  demo.me = demo.members[demo.meKey] || demo.members.jamie;
+
+  // Turns the stored rows into what this member should see: whether they may
+  // act, and whether anyone is waiting on them.
+  function demoNeedsYou() {
+    const me = demo.me;
+    return demo.needsYou.map(item => {
+      if (item.kind === 'bill') {
+        return {
+          id: item.id, kind: 'bill', title: item.title, meta: item.meta,
+          urgent: item.urgent,
+          action: me.role === 'adult' ? 'Pay' : null
+        };
+      }
+
+      const assignee = demo.members[item.assignee];
+      const mine = assignee.key === me.key;
+      const nudges = demo.nudges.filter(n => n.occurrenceId === item.id);
+      const fromMe = nudges.find(n => n.from === me.key);
+      const toMe = nudges.filter(n => n.to === me.key);
+
+      let meta = assignee.name + ' · ' + item.slipped;
+      if (mine && toMe.length) {
+        const names = toMe.map(n => demo.members[n.from].name);
+        meta = names.join(' and ') + ' nudged you · ' + item.slipped;
+      }
+
+      return {
+        id: item.id,
+        kind: 'occurrence',
+        title: item.title,
+        meta: meta,
+        urgent: item.urgent,
+        // Nobody nudges themselves, and nudging twice is not a thing.
+        action: (mine || fromMe) ? null : 'Nudge',
+        status: fromMe ? (fromMe.seen ? 'Seen' : 'Nudged') : null
+      };
+    });
+  }
+
   const demoSource = {
     live: false,
 
@@ -108,7 +160,7 @@
         date: DAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate(),
         greeting: 'Morning, ' + demo.me.name,
         me: demo.me,
-        needsYou: demo.needsYou,
+        needsYou: demoNeedsYou(),
         today: {
           done: done,
           total: demo.totalToday,
@@ -170,11 +222,22 @@
     },
 
     async sendNudge(id) {
-      if (demo.nudgedToday.indexOf(id) !== -1) {
+      const item = demo.needsYou.find(n => n.id === id);
+      if (!item || item.kind !== 'occurrence') throw new Error('no such occurrence');
+      if (item.assignee === demo.me.key) throw new Error('that one is yours');
+      if (demo.nudges.some(n => n.occurrenceId === id && n.from === demo.me.key)) {
         throw new Error('already nudged about that today');
       }
-      demo.nudgedToday.push(id);
+      demo.nudges.push({ occurrenceId: id, from: demo.me.key, to: item.assignee, seen: false });
       return true;
+    },
+
+    async markNudgesSeen() {
+      let touched = 0;
+      demo.nudges.forEach(n => {
+        if (n.to === demo.me.key && !n.seen) { n.seen = true; touched++; }
+      });
+      return touched;
     }
   };
 
@@ -229,7 +292,7 @@
         const cur = c.household.currency;
         const today = todayIn(tz);
 
-        const [openToday, slipped, bills, streaks, low, spend, budget, ev] = await Promise.all([
+        const [openToday, slipped, bills, streaks, low, spend, budget, ev, nudges] = await Promise.all([
           sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today),
           sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('slipped', true).lt('due_on', today).order('due_on'),
           sb.from('bill').select('*').eq('household_id', c.household.id).is('paid_at', null).lte('due_on', today).order('due_on'),
@@ -237,7 +300,8 @@
           sb.from('pantry_item').select('name').eq('household_id', c.household.id).eq('is_low', true),
           sb.from('expense').select('amount').eq('household_id', c.household.id).gte('spent_on', addDays(today, -6)),
           sb.from('budget').select('amount').eq('household_id', c.household.id).eq('period', 'weekly').lte('effective_from', today).order('effective_from', { ascending: false }).limit(1),
-          sb.from('event').select('*').eq('household_id', c.household.id).gte('starts_at', new Date().toISOString()).order('starts_at').limit(1)
+          sb.from('event').select('*').eq('household_id', c.household.id).gte('starts_at', new Date().toISOString()).order('starts_at').limit(1),
+          sb.from('nudge').select('occurrence_id, from_member_id, to_member_id, seen_at').eq('household_id', c.household.id).gte('nudged_on', addDays(today, -30))
         ]);
 
         const rows = openToday.data || [];
@@ -253,15 +317,37 @@
           };
         }).filter(p => p.total > 0);
 
-        const needsYou = (slipped.data || []).map(o => ({
-          id: o.id,
-          kind: 'occurrence',
-          title: o.title,
-          meta: (initialName(c, o.effective_assignee_id) || 'Unassigned') + ' · slipped ' + relativeDay(o.due_on, today),
-          // Nothing to nudge if it is already yours, or nobody holds it.
-          action: (o.effective_assignee_id && o.effective_assignee_id !== c.me.id) ? 'Nudge' : null,
-          urgent: true
-        })).concat((bills.data || []).map(b => ({
+        const allNudges = nudges.data || [];
+
+        const needsYou = (slipped.data || []).map(o => {
+          const mine = o.effective_assignee_id === c.me.id;
+          const on = allNudges.filter(n => n.occurrence_id === o.id);
+          const fromMe = on.find(n => n.from_member_id === c.me.id);
+          const toMe = on.filter(n => n.to_member_id === c.me.id);
+          const slippedLabel = 'slipped ' + relativeDay(o.due_on, today);
+
+          // If people are waiting on you, say who — that is the whole point of
+          // a nudge, and it belongs where you already look.
+          let meta;
+          if (mine && toMe.length) {
+            const names = toMe.map(n => initialName(c, n.from_member_id)).filter(Boolean);
+            meta = names.join(' and ') + ' nudged you · ' + slippedLabel;
+          } else {
+            meta = (initialName(c, o.effective_assignee_id) || 'Unassigned') + ' · ' + slippedLabel;
+          }
+
+          return {
+            id: o.id,
+            kind: 'occurrence',
+            title: o.title,
+            meta: meta,
+            urgent: true,
+            // Nothing to nudge if it is already yours, nobody holds it, or you
+            // have nudged about it already.
+            action: (!mine && o.effective_assignee_id && !fromMe) ? 'Nudge' : null,
+            status: fromMe ? (fromMe.seen_at ? 'Seen' : 'Nudged') : null
+          };
+        }).concat((bills.data || []).map(b => ({
           id: b.id,
           kind: 'bill',
           title: b.label + ' · ' + money(b.amount, cur),
@@ -401,6 +487,14 @@
         const { error } = await sb.rpc('send_nudge', { target_occurrence: occurrenceId });
         if (error) throw new Error(error.message);
         return true;
+      },
+
+      // Opening the board is what "seen" means. It does not hide anything — it
+      // just lets whoever nudged stop wondering.
+      async markNudgesSeen() {
+        const { data, error } = await sb.rpc('mark_nudges_seen');
+        if (error) throw new Error(error.message);
+        return data || 0;
       }
     };
 

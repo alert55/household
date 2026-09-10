@@ -405,6 +405,13 @@ a:hover { color: var(--terracotta-ink); }
 
 .chip:disabled { opacity: .55; cursor: default; }
 
+/* Already nudged — a state, not an offer. */
+.chip--quiet {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, .18);
+  color: var(--dark-muted);
+}
+
 .signin { padding: 20px 18px; }
 .signin__lead { font-size: 13.5px; color: var(--muted); line-height: 1.5; }
 

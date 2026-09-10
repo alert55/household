@@ -39,6 +39,12 @@ That is not a fallback so much as the point: both sources answer `loadBoard()`
 and `loadMoney()` in the same shape, so the rendering can be exercised without a
 backend, and going live is a change to `config.js` rather than to any screen.
 
+Add `?as=alex` or `?as=sam` to see the same board as someone else. It is how the
+sides of a nudge are checked without two accounts: Sam has already nudged Alex
+about the trash, so Alex sees "Sam nudged you" and no buttons at all — a child
+may not pay bills — while Sam sees a "Nudged" tag where the button was. Demo
+state lives only for the page load, so the "Seen" tag needs a real backend.
+
 To go live, create a Supabase project, apply the migrations in
 `supabase/migrations`, and fill in the URL and anon key. The anon key belongs in
 public client code — security rests on the row-level security policies, not on
