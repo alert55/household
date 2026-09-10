@@ -38,6 +38,22 @@
 
   function dayName(iso) { return DAYS[new Date(iso + 'T00:00:00Z').getUTCDay()]; }
 
+  function todayIso() { return new Date().toISOString().slice(0, 10); }
+
+  // '14:45' from a time input -> 885 minutes, and back to a readable '2:45p'.
+  function toMinutes(hhmm) {
+    const parts = String(hhmm).split(':');
+    return (Number(parts[0]) * 60) + Number(parts[1] || 0);
+  }
+
+  function fromMinutes(mins) {
+    let h = Math.floor(mins / 60);
+    const m = mins % 60;
+    const suffix = h >= 12 ? 'p' : 'a';
+    h = h % 12 || 12;
+    return h + ':' + String(m).padStart(2, '0') + suffix;
+  }
+
   function relativeDay(iso, today) {
     if (iso === today) return 'today';
     if (iso === addDays(today, -1)) return 'yesterday';
@@ -263,6 +279,62 @@
           }))
         }))
       };
+    },
+
+    async loadMembers() {
+      return {
+        me: demo.me,
+        members: Object.keys(demo.members).map(k => demo.members[k])
+      };
+    },
+
+    async createTask(input) {
+      const at = input.time ? toMinutes(input.time) : null;
+      demo.occurrences.push({
+        id: 'o-' + Date.now(),
+        title: input.title,
+        assignee: input.assignee,
+        time: at === null ? null : fromMinutes(at),
+        at: at,
+        points: input.points || 0,
+        completed: false
+      });
+      return true;
+    },
+
+    async createExpense(input) {
+      const who = demo.members[input.spentBy] || demo.me;
+      demo.expenses.unshift({
+        id: 'e-' + Date.now(), label: input.label, amount: input.amount,
+        who: who.name, initial: who.initial, accent: who.accent, when: 'today'
+      });
+      demo.week.spent += input.amount;
+      return true;
+    },
+
+    async createPantryItem(input) {
+      if (demo.pantryItems.some(p => p.name.toLowerCase() === input.name.toLowerCase())) {
+        throw new Error('that is already in the pantry');
+      }
+      demo.pantryItems.push({ id: 'p-' + Date.now(), name: input.name, low: Boolean(input.low) });
+      return true;
+    },
+
+    async createBill(input) {
+      const id = 'b-' + Date.now();
+      demo.billsDue.push({
+        id: id, label: input.label, amount: input.amount,
+        dueLabel: input.dueOn === todayIso() ? 'Due today' : 'Due ' + dayName(input.dueOn),
+        urgent: input.dueOn <= todayIso()
+      });
+      if (input.dueOn <= todayIso()) {
+        demo.needsYou.push({
+          id: id, kind: 'bill',
+          title: input.label + ' · ' + money(input.amount, 'THB'),
+          meta: 'Due today', urgent: true
+        });
+      }
+      return true;
     },
 
     async loadKitchen() {
@@ -603,6 +675,75 @@
           })),
           people: people
         };
+      },
+
+      async loadMembers() {
+        const c = await context();
+        return {
+          me: { key: c.me.id, name: c.me.display_name, initial: initial(c.me), accent: c.me.accent, role: c.me.role },
+          members: c.members.map(m => ({
+            key: m.id, name: m.display_name, initial: initial(m), accent: m.accent, role: m.role
+          }))
+        };
+      },
+
+      // Inserting the task is enough: the trigger from 0002 materialises its
+      // occurrences, so it appears on today's board without a second call.
+      async createTask(input) {
+        const c = await context();
+        const today = todayIn(c.household.timezone);
+
+        const row = {
+          household_id: c.household.id,
+          title: input.title,
+          default_assignee_id: input.assignee || null,
+          recurrence_freq: input.recurrence,
+          due_time: input.time || null,
+          starts_on: today,
+          points: input.points || 0
+        };
+        if (input.recurrence === 'weekly') row.by_weekday = [1, 2, 3, 4, 5];
+
+        const { error } = await sb.from('task').insert(row);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async createExpense(input) {
+        const c = await context();
+        const { error } = await sb.from('expense').insert({
+          household_id: c.household.id,
+          label: input.label,
+          amount: input.amount,
+          spent_on: todayIn(c.household.timezone),
+          spent_by: input.spentBy || c.me.id
+        });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async createPantryItem(input) {
+        const c = await context();
+        const { error } = await sb.from('pantry_item').insert({
+          household_id: c.household.id,
+          name: input.name,
+          is_low: Boolean(input.low),
+          marked_low_at: input.low ? new Date().toISOString() : null
+        });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async createBill(input) {
+        const c = await context();
+        const { error } = await sb.from('bill').insert({
+          household_id: c.household.id,
+          label: input.label,
+          amount: input.amount,
+          due_on: input.dueOn
+        });
+        if (error) throw new Error(error.message);
+        return true;
       },
 
       async loadKitchen() {

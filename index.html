@@ -241,6 +241,24 @@
   </nav>
 </div>
 
+<!-- ══ Add sheet ════════════════════════════════════════ -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet__scrim" id="sheet-scrim"></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div class="sheet__head">
+      <h2 class="sheet__title" id="sheet-title">Add</h2>
+      <button class="sheet__close" type="button" id="sheet-close" aria-label="Close">✕</button>
+    </div>
+    <ul class="kinds" id="sheet-kinds"></ul>
+    <form id="sheet-form" novalidate>
+      <div id="sheet-fields"></div>
+      <p class="sheet__error" id="sheet-error" role="alert"></p>
+      <button class="button" type="submit" id="sheet-submit">Add</button>
+    </form>
+  </div>
+</div>
+
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="data.js"></script>

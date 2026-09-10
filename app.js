@@ -457,6 +457,209 @@
     }));
   }
 
+  // ── Adding things ──────────────────────────────────────────────────────
+
+  // What the + offers. `adults` marks the kinds the policies in 0001 reserve
+  // for adults — the database refuses either way, this just stops offering a
+  // child a form that cannot be submitted.
+  const KINDS = [
+    { key: 'task', label: 'Task', adults: true, screen: 'tasks' },
+    { key: 'expense', label: 'Expense', adults: false, screen: 'money' },
+    { key: 'pantry', label: 'Pantry item', adults: false, screen: 'kitchen' },
+    { key: 'bill', label: 'Bill', adults: true, screen: 'money' }
+  ];
+
+  let sheetKind = 'task';
+  let roster = null;
+
+  function field(label, control) {
+    const wrap = el('label', 'field-row');
+    wrap.appendChild(el('span', 'field-row__label', label));
+    wrap.appendChild(control);
+    return wrap;
+  }
+
+  function input(type, name, attrs) {
+    const node = document.createElement('input');
+    node.className = 'field';
+    node.type = type;
+    node.name = name;
+    Object.keys(attrs || {}).forEach(k => node.setAttribute(k, attrs[k]));
+    return node;
+  }
+
+  function select(name, options) {
+    const node = document.createElement('select');
+    node.className = 'field';
+    node.name = name;
+    options.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      node.appendChild(opt);
+    });
+    return node;
+  }
+
+  function renderFields() {
+    const box = $('sheet-fields');
+    const people = roster.members.map(m => ({ value: m.key, label: m.name }));
+
+    if (sheetKind === 'task') {
+      const who = select('assignee', people);
+      const points = input('number', 'points', { min: '0', max: '100', step: '5', value: '0' });
+      const pointsRow = field('Points', points);
+
+      // Only a child earns points, so only a child is offered them.
+      const syncPoints = () => {
+        const member = roster.members.find(m => m.key === who.value);
+        pointsRow.hidden = !member || member.role !== 'child';
+        if (pointsRow.hidden) points.value = '0';
+      };
+      who.addEventListener('change', syncPoints);
+
+      fill(box, [
+        field('What', input('text', 'title', { placeholder: 'Feed the dog', required: 'required' })),
+        field('Who', who),
+        field('When', select('recurrence', [
+          { value: 'once', label: 'Just today' },
+          { value: 'daily', label: 'Every day' },
+          { value: 'weekly', label: 'Weekdays' }
+        ])),
+        field('Time', input('time', 'time', {})),
+        pointsRow
+      ]);
+      syncPoints();
+
+    } else if (sheetKind === 'expense') {
+      fill(box, [
+        field('What', input('text', 'label', { placeholder: 'Market', required: 'required' })),
+        field('How much', input('number', 'amount', { min: '1', step: '1', placeholder: '700', required: 'required' })),
+        field('Who paid', select('spentBy', people))
+      ]);
+
+    } else if (sheetKind === 'pantry') {
+      fill(box, [
+        field('What', input('text', 'name', { placeholder: 'Olive oil', required: 'required' })),
+        field('Already low', select('low', [
+          { value: 'no', label: 'No, just stocked' },
+          { value: 'yes', label: 'Yes, add to the list' }
+        ]))
+      ]);
+
+    } else {
+      fill(box, [
+        field('What', input('text', 'label', { placeholder: 'Water bill', required: 'required' })),
+        field('How much', input('number', 'amount', { min: '1', step: '1', placeholder: '740', required: 'required' })),
+        field('Due', input('date', 'dueOn', { value: new Date().toISOString().slice(0, 10), required: 'required' }))
+      ]);
+    }
+
+    if (sheetKind === 'task' && roster.me.key) {
+      const who = box.querySelector('select[name="assignee"]');
+      if (who) who.value = roster.me.key;
+    }
+
+    const first = box.querySelector('input, select');
+    if (first) setTimeout(() => first.focus(), 30);
+  }
+
+  function renderKinds() {
+    const allowed = KINDS.filter(k => !k.adults || roster.me.role === 'adult');
+    if (!allowed.some(k => k.key === sheetKind)) sheetKind = allowed[0].key;
+
+    fill($('sheet-kinds'), allowed.map(k => {
+      const li = el('li');
+      const b = el('button', 'kind' + (k.key === sheetKind ? ' is-on' : ''), k.label);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        sheetKind = k.key;
+        $('sheet-error').textContent = '';
+        renderKinds();
+        renderFields();
+      });
+      li.appendChild(b);
+      return li;
+    }));
+  }
+
+  async function openSheet() {
+    try {
+      roster = await data.loadMembers();
+    } catch (err) {
+      flash('Could not load the household — ' + (err.message || 'try again'), 'bad');
+      return;
+    }
+
+    // Default to whatever the screen you are on is about.
+    const here = routeFromHash();
+    const match = KINDS.find(k => k.screen === here && (!k.adults || roster.me.role === 'adult'));
+    if (match) sheetKind = match.key;
+
+    $('sheet-error').textContent = '';
+    renderKinds();
+    renderFields();
+    $('sheet').hidden = false;
+  }
+
+  function closeSheet() {
+    $('sheet').hidden = true;
+    $('sheet-form').reset();
+  }
+
+  async function submitSheet(e) {
+    e.preventDefault();
+    const form = $('sheet-form');
+    const get = name => {
+      const node = form.elements[name];
+      return node ? String(node.value).trim() : '';
+    };
+    const err = $('sheet-error');
+    err.textContent = '';
+
+    try {
+      if (sheetKind === 'task') {
+        if (!get('title')) throw new Error('Give it a name.');
+        await data.createTask({
+          title: get('title'),
+          assignee: get('assignee'),
+          recurrence: get('recurrence'),
+          time: get('time') || null,
+          points: Number(get('points') || 0)
+        });
+      } else if (sheetKind === 'expense') {
+        const amount = Number(get('amount'));
+        if (!get('label')) throw new Error('Give it a name.');
+        if (!(amount > 0)) throw new Error('How much was it?');
+        await data.createExpense({ label: get('label'), amount: amount, spentBy: get('spentBy') });
+      } else if (sheetKind === 'pantry') {
+        if (!get('name')) throw new Error('Give it a name.');
+        await data.createPantryItem({ name: get('name'), low: get('low') === 'yes' });
+      } else {
+        const amount = Number(get('amount'));
+        if (!get('label')) throw new Error('Give it a name.');
+        if (!(amount > 0)) throw new Error('How much is it?');
+        if (!get('dueOn')) throw new Error('When is it due?');
+        await data.createBill({ label: get('label'), amount: amount, dueOn: get('dueOn') });
+      }
+    } catch (ex) {
+      err.textContent = ex.message || 'That did not work.';
+      return;
+    }
+
+    closeSheet();
+    flash('Added.', 'good');
+    await go(routeFromHash());
+  }
+
+  document.querySelector('.fab').addEventListener('click', openSheet);
+  $('sheet-close').addEventListener('click', closeSheet);
+  $('sheet-scrim').addEventListener('click', closeSheet);
+  $('sheet-form').addEventListener('submit', submitSheet);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('sheet').hidden) closeSheet();
+  });
+
   // ── Routing ────────────────────────────────────────────────────────────
 
   function routeFromHash() {
