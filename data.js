@@ -1,0 +1,373 @@
+// One shape, two sources.
+//
+// Everything the screens render comes back from loadBoard() and loadMoney() in
+// exactly the same shape whichever source answered. That is the point: the
+// rendering can be exercised today against demo rows, and pointing it at a real
+// project is a change to config.js, not to any screen.
+
+(function () {
+  'use strict';
+
+  const cfg = window.HOUSEHOLD_CONFIG || {};
+  const live = Boolean(cfg.supabaseUrl && cfg.supabaseAnonKey);
+
+  // ── Helpers ────────────────────────────────────────────────────────────
+
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  function money(amount, currency) {
+    const symbol = currency === 'THB' || !currency ? '฿' : currency + ' ';
+    return symbol + Math.round(amount).toLocaleString('en-US');
+  }
+
+  // The household's date, not the browser's and not the server's. Whether an
+  // occurrence has slipped depends entirely on which day it belongs to.
+  function todayIn(timezone) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+    return parts; // YYYY-MM-DD
+  }
+
+  function addDays(iso, n) {
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function dayName(iso) { return DAYS[new Date(iso + 'T00:00:00Z').getUTCDay()]; }
+
+  function relativeDay(iso, today) {
+    if (iso === today) return 'today';
+    if (iso === addDays(today, -1)) return 'yesterday';
+    if (iso === addDays(today, 1)) return 'tomorrow';
+    return dayName(iso);
+  }
+
+  function timeLabel(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const suffix = h >= 12 ? 'p' : 'a';
+    h = h % 12 || 12;
+    return h + (m ? ':' + String(m).padStart(2, '0') : ':00') + suffix;
+  }
+
+  // ── Demo source ────────────────────────────────────────────────────────
+
+  // Deliberately the same rows the board was hardcoded with, so demo mode looks
+  // like the design and any rendering bug shows up as a visible difference.
+  const demo = {
+    household: { timezone: 'Asia/Bangkok', currency: 'THB' },
+    me: { name: 'Jamie', initial: 'J', accent: 'sage', role: 'adult' },
+    doneElsewhere: 4,
+    totalToday: 10,
+    people: [
+      { initial: 'J', accent: 'sage', done: 1, total: 2 },
+      { initial: 'S', accent: 'clay', done: 1, total: 3 },
+      { initial: 'A', accent: 'gold', done: 1, total: 3 }
+    ],
+    occurrences: [
+      { id: 'demo-pickup', title: 'School drop-off', meta: 'Sam · 2:45p', completed: false },
+      { id: 'demo-dog', title: 'Feed the dog', meta: 'Alex', completed: false }
+    ],
+    remaining: 6,
+    needsYou: [
+      { id: 'demo-trash', title: 'Trash to the curb', meta: 'Alex · slipped yesterday', action: 'Nudge', urgent: true },
+      { id: 'demo-water', title: 'Water bill · ฿740', meta: 'Due today', action: 'Pay', urgent: true }
+    ],
+    streak: { name: 'Alex', days: 5, target: 7, note: 'Homework 5 days straight. 2 more → movie night.' },
+    pantry: { count: 3, items: 'Milk, dish soap, rice' },
+    week: { spent: 3120, ceiling: 6000, daysLeft: 3 },
+    nextEvent: { dow: 'Fri', day: 11, title: 'Alex · swim class', meta: '5:30p · Sam driving' },
+    billsDue: [
+      { id: 'demo-water', label: 'Water bill', amount: 740, dueLabel: 'Due today', urgent: true },
+      { id: 'demo-net', label: 'Internet', amount: 1200, dueLabel: 'Due Friday', urgent: false }
+    ],
+    expenses: [
+      { id: 'e1', label: 'Market', amount: 700, who: 'Sam', initial: 'S', accent: 'clay', when: 'today' },
+      { id: 'e2', label: 'Groceries', amount: 880, who: 'Sam', initial: 'S', accent: 'clay', when: 'Tuesday' },
+      { id: 'e3', label: 'Pharmacy', amount: 220, who: 'Jamie', initial: 'J', accent: 'sage', when: 'Tuesday' },
+      { id: 'e4', label: 'Petrol', amount: 900, who: 'Sam', initial: 'S', accent: 'clay', when: 'Monday' },
+      { id: 'e5', label: 'School supplies', amount: 420, who: 'Jamie', initial: 'J', accent: 'sage', when: 'Sunday' }
+    ]
+  };
+
+  const demoSource = {
+    live: false,
+
+    async signedIn() { return true; },
+
+    async loadBoard() {
+      const now = new Date();
+      const done = demo.doneElsewhere + demo.occurrences.filter(o => o.completed).length;
+      return {
+        date: DAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate(),
+        greeting: 'Morning, ' + demo.me.name,
+        me: demo.me,
+        needsYou: demo.needsYou,
+        today: {
+          done: done,
+          total: demo.totalToday,
+          people: demo.people,
+          occurrences: demo.occurrences,
+          remaining: demo.remaining
+        },
+        streak: demo.streak,
+        pantry: demo.pantry,
+        week: {
+          spent: money(demo.week.spent, 'THB'),
+          percent: Math.round((demo.week.spent / demo.week.ceiling) * 100)
+        },
+        nextEvent: demo.nextEvent
+      };
+    },
+
+    async loadMoney() {
+      const w = demo.week;
+      return {
+        periodLabel: 'Sep 8 – 14',
+        budget: {
+          spent: money(w.spent, 'THB'),
+          ceiling: 'of ' + money(w.ceiling, 'THB'),
+          percent: Math.round((w.spent / w.ceiling) * 100),
+          left: money(w.ceiling - w.spent, 'THB') + ' left · ' + w.daysLeft + ' days to go'
+        },
+        billsDue: demo.billsDue.map(b => ({
+          id: b.id, urgent: b.urgent, dueLabel: b.dueLabel,
+          title: b.label + ' · ' + money(b.amount, 'THB')
+        })),
+        billsTotal: money(demo.billsDue.reduce((a, b) => a + b.amount, 0), 'THB'),
+        expenses: demo.expenses.map(e => ({
+          id: e.id, label: e.label, initial: e.initial, accent: e.accent,
+          meta: e.who + ' · ' + e.when, amount: money(e.amount, 'THB')
+        }))
+      };
+    },
+
+    async setOccurrenceDone(id, done) {
+      const row = demo.occurrences.find(o => o.id === id);
+      if (row) row.completed = done;
+      return true;
+    }
+  };
+
+  // ── Supabase source ────────────────────────────────────────────────────
+
+  function supabaseSource() {
+    const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+    let ctx = null; // { member, household, members }
+
+    async function context() {
+      if (ctx) return ctx;
+      const { data: auth } = await sb.auth.getUser();
+      if (!auth || !auth.user) throw new Error('not signed in');
+
+      const { data: me, error } = await sb
+        .from('member')
+        .select('id, display_name, role, accent, household_id, household:household_id (id, name, timezone, currency)')
+        .eq('user_id', auth.user.id)
+        .single();
+      if (error) throw error;
+
+      const { data: members } = await sb
+        .from('member')
+        .select('id, display_name, role, accent')
+        .eq('household_id', me.household_id);
+
+      ctx = { me: me, household: me.household, members: members || [] };
+      return ctx;
+    }
+
+    const initial = m => (m && m.display_name ? m.display_name.charAt(0).toUpperCase() : '?');
+    const byId = (list, id) => list.find(m => m.id === id) || null;
+
+    return {
+      live: true,
+
+      async signedIn() {
+        const { data } = await sb.auth.getSession();
+        return Boolean(data && data.session);
+      },
+
+      async signIn(email) {
+        const { error } = await sb.auth.signInWithOtp({ email: email });
+        if (error) throw error;
+      },
+
+      async signOut() { ctx = null; await sb.auth.signOut(); },
+
+      async loadBoard() {
+        const c = await context();
+        const tz = c.household.timezone;
+        const cur = c.household.currency;
+        const today = todayIn(tz);
+
+        const [openToday, slipped, bills, streaks, low, spend, budget, ev] = await Promise.all([
+          sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today),
+          sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('slipped', true).lt('due_on', today).order('due_on'),
+          sb.from('bill').select('*').eq('household_id', c.household.id).is('paid_at', null).lte('due_on', today).order('due_on'),
+          sb.from('streak_current').select('*').eq('household_id', c.household.id).order('length', { ascending: false }).limit(1),
+          sb.from('pantry_item').select('name').eq('household_id', c.household.id).eq('is_low', true),
+          sb.from('expense').select('amount').eq('household_id', c.household.id).gte('spent_on', addDays(today, -6)),
+          sb.from('budget').select('amount').eq('household_id', c.household.id).eq('period', 'weekly').lte('effective_from', today).order('effective_from', { ascending: false }).limit(1),
+          sb.from('event').select('*').eq('household_id', c.household.id).gte('starts_at', new Date().toISOString()).order('starts_at').limit(1)
+        ]);
+
+        const rows = openToday.data || [];
+        const done = rows.filter(r => r.completed_at).length;
+
+        const people = c.members.map(m => {
+          const mine = rows.filter(r => r.effective_assignee_id === m.id);
+          return {
+            initial: initial(m),
+            accent: m.accent,
+            done: mine.filter(r => r.completed_at).length,
+            total: mine.length
+          };
+        }).filter(p => p.total > 0);
+
+        const needsYou = (slipped.data || []).map(o => ({
+          id: o.id,
+          title: o.title,
+          meta: (initialName(c, o.effective_assignee_id) || 'Unassigned') + ' · slipped ' + relativeDay(o.due_on, today),
+          action: 'Nudge',
+          urgent: true
+        })).concat((bills.data || []).map(b => ({
+          id: b.id,
+          title: b.label + ' · ' + money(b.amount, cur),
+          meta: b.due_on === today ? 'Due today' : 'Due ' + relativeDay(b.due_on, today),
+          action: 'Pay',
+          urgent: true
+        })));
+
+        const spent = (spend.data || []).reduce((a, r) => a + Number(r.amount), 0);
+        const ceiling = budget.data && budget.data[0] ? Number(budget.data[0].amount) : 0;
+
+        const streak = streaks.data && streaks.data[0] ? streaks.data[0] : null;
+        const streakMember = streak ? byId(c.members, streak.member_id) : null;
+        const event = ev.data && ev.data[0] ? ev.data[0] : null;
+
+        // Only the two soonest incomplete rows go on the board; the rest are
+        // behind "See all".
+        const shown = rows.filter(r => !r.completed_at).slice(0, 2);
+
+        return {
+          date: dayName(today) + ', ' + MONTHS[Number(today.slice(5, 7)) - 1] + ' ' + Number(today.slice(8, 10)),
+          greeting: 'Morning, ' + c.me.display_name,
+          me: { name: c.me.display_name, initial: initial(c.me), accent: c.me.accent },
+          needsYou: needsYou,
+          today: {
+            done: done,
+            total: rows.length,
+            people: people,
+            occurrences: shown.map(o => ({
+              id: o.id,
+              title: o.title,
+              meta: [initialName(c, o.effective_assignee_id), o.due_time ? timeLabel(o.due_at) : null].filter(Boolean).join(' · '),
+              completed: Boolean(o.completed_at),
+              points: o.points_on_offer,
+              assignee: o.effective_assignee_id
+            })),
+            remaining: rows.length
+          },
+          streak: streak ? {
+            name: streakMember ? streakMember.display_name : '',
+            days: streak.length,
+            target: 7,
+            note: 'Kept ' + streak.length + ' days straight.'
+          } : null,
+          pantry: {
+            count: (low.data || []).length,
+            items: (low.data || []).map(p => p.name).join(', ')
+          },
+          week: {
+            spent: money(spent, cur),
+            percent: ceiling ? Math.round((spent / ceiling) * 100) : 0
+          },
+          nextEvent: event ? {
+            dow: dayName(event.occurs_on || event.starts_at.slice(0, 10)).slice(0, 3),
+            day: Number((event.occurs_on || event.starts_at.slice(0, 10)).slice(8, 10)),
+            title: event.title,
+            meta: [timeLabel(event.starts_at), initialName(c, event.responsible_id)].filter(Boolean).join(' · ')
+          } : null
+        };
+      },
+
+      async loadMoney() {
+        const c = await context();
+        const tz = c.household.timezone;
+        const cur = c.household.currency;
+        const today = todayIn(tz);
+        const weekStart = addDays(today, -6);
+
+        const [budget, bills, expenses] = await Promise.all([
+          sb.from('budget').select('amount').eq('household_id', c.household.id).eq('period', 'weekly').lte('effective_from', today).order('effective_from', { ascending: false }).limit(1),
+          sb.from('bill').select('*').eq('household_id', c.household.id).is('paid_at', null).lte('due_on', addDays(today, 7)).order('due_on'),
+          sb.from('expense').select('*').eq('household_id', c.household.id).gte('spent_on', weekStart).order('spent_on', { ascending: false })
+        ]);
+
+        const rows = expenses.data || [];
+        const spent = rows.reduce((a, r) => a + Number(r.amount), 0);
+        const ceiling = budget.data && budget.data[0] ? Number(budget.data[0].amount) : 0;
+        const dueRows = bills.data || [];
+
+        return {
+          periodLabel: MONTHS[Number(weekStart.slice(5, 7)) - 1] + ' ' + Number(weekStart.slice(8, 10)) +
+            ' – ' + Number(today.slice(8, 10)),
+          budget: {
+            spent: money(spent, cur),
+            ceiling: ceiling ? 'of ' + money(ceiling, cur) : '',
+            percent: ceiling ? Math.round((spent / ceiling) * 100) : 0,
+            left: ceiling ? money(Math.max(ceiling - spent, 0), cur) + ' left' : ''
+          },
+          billsDue: dueRows.map(b => ({
+            id: b.id,
+            urgent: b.due_on <= today,
+            title: b.label + ' · ' + money(b.amount, cur),
+            dueLabel: b.due_on === today ? 'Due today' : 'Due ' + relativeDay(b.due_on, today)
+          })),
+          billsTotal: money(dueRows.reduce((a, b) => a + Number(b.amount), 0), cur),
+          expenses: rows.map(e => {
+            const who = byId(c.members, e.spent_by);
+            return {
+              id: e.id,
+              label: e.label,
+              initial: initial(who),
+              accent: who ? who.accent : 'sage',
+              meta: [who ? who.display_name : 'Someone', relativeDay(e.spent_on, today)].join(' · '),
+              amount: money(e.amount, cur)
+            };
+          })
+        };
+      },
+
+      async setOccurrenceDone(id, done, occurrence) {
+        const c = await context();
+        // The trigger in 0001 rejects points for anyone but a child, so award
+        // them only when the person completing it is one.
+        const earner = occurrence && occurrence.assignee ? byId(c.members, occurrence.assignee) : c.me;
+        const points = done && earner && earner.role === 'child' ? (occurrence.points || 0) : 0;
+
+        const { error } = await sb.from('occurrence').update({
+          completed_at: done ? new Date().toISOString() : null,
+          completed_by: done ? (earner ? earner.id : c.me.id) : null,
+          points_awarded: points
+        }).eq('id', id);
+
+        if (error) throw error;
+        return true;
+      }
+    };
+
+    function initialName(c, id) {
+      const m = byId(c.members, id);
+      return m ? m.display_name : null;
+    }
+  }
+
+  window.HouseholdData = live ? supabaseSource() : demoSource;
+  window.HouseholdData.isLive = live;
+})();

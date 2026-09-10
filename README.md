@@ -21,9 +21,28 @@ works, but relative asset paths behave better over HTTP.
 
 | File | What it holds |
 | --- | --- |
-| `index.html` | The board. Semantic markup — real buttons, checkbox/label pairs, `role="progressbar"` on the meters, `aria-current` on the active tab. |
+| `index.html` | The screens, as containers the renderer fills. Semantic markup — real buttons, checkbox/label pairs, `role="progressbar"` on the meters, `aria-current` on the active tab. |
 | `styles.css` | Every colour, radius and size from the design, lifted off inline styles into custom properties on `:root`. |
-| `app.js` | The one behaviour the design implies: ticking a task updates the "N of 10 done" readout. |
+| `config.js` | Which project to talk to. Empty means demo mode. |
+| `data.js` | One shape, two sources: in-memory demo rows, and the real Supabase queries. |
+| `app.js` | Routing, rendering and the tick. |
+
+No build step and no dependencies of our own. Fonts come from Google Fonts and
+the Supabase client from a CDN; everything else is inline SVG.
+
+## Demo mode
+
+With `config.js` left empty the app runs on in-memory rows that reproduce the
+original design exactly. Every screen works and nothing is saved.
+
+That is not a fallback so much as the point: both sources answer `loadBoard()`
+and `loadMoney()` in the same shape, so the rendering can be exercised without a
+backend, and going live is a change to `config.js` rather than to any screen.
+
+To go live, create a Supabase project, apply the migrations in
+`supabase/migrations`, and fill in the URL and anon key. The anon key belongs in
+public client code — security rests on the row-level security policies, not on
+that key being secret (ADR 0004).
 
 No build step and no dependencies. Fonts (Newsreader, IBM Plex Sans) come from
 Google Fonts; everything else is inline SVG.
@@ -66,11 +85,11 @@ hardening step for later.
 
 ## Where this could go next
 
-Nothing is persisted yet. Tick a task, reload, and it comes back — the screens
-are still hardcoded, and Nudge and Pay are buttons with no behaviour behind them.
-The storage direction is chosen (ADR 0004) but not built: no schema, no auth, no
-sync.
+The schema and its materialisation job exist but have never been applied to a
+real database — treat everything under `supabase/` as unrun code until it has
+met a live Postgres. The Supabase source in `data.js` is unrun for the same
+reason; only the demo path has been exercised.
 
-The design already implies the hard bits: Nudge needs push to someone else's
-device, and extending the occurrence horizon needs a daily job that knows the
-household's timezone.
+Nudge and Pay are still buttons with no behaviour behind them. Nudge needs push
+to someone else's device, which ADR 0004 does not give us for free. Tasks and
+Kitchen are empty screens.
