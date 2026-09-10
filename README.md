@@ -43,13 +43,23 @@ Two deliberate departures from the design file:
 - **`support.js` is not vendored.** It is the generated `dc-runtime` that renders
   `.dc.html` on the design canvas, marked "do not edit", and has no role here.
 
+## The domain
+
+The vocabulary is written down in [CONTEXT.md](./CONTEXT.md) — what a task,
+occurrence, event, bill and streak each mean, and which synonyms to avoid.
+Decisions that were genuinely contested live in [docs/adr](./docs/adr):
+
+- [0001](./docs/adr/0001-tasks-and-events-are-separate.md) — tasks and events
+  are separate concepts
+- [0002](./docs/adr/0002-occurrences-are-stored.md) — occurrences are stored,
+  not derived
+
 ## Where this could go next
 
-The screens are the easy part. Making this real means naming the domain —
-*household*, *member*, *task*, *recurrence*, *streak*, *bill*, *pantry item*,
-*event* — and deciding which of those are shared state that several phones read
-and write at once.
+The screens are the easy part. Still undecided: whether this stays a single
+static page or grows real navigation, and where anything is persisted — no
+storage direction has been chosen yet.
 
-The design already implies the hard bits: "missed yesterday" needs a recurrence
-schedule plus a grace window, "Nudge" needs push to someone else's device, and
-the streak needs a daily rollover that knows the household's timezone.
+The design already implies the hard bits: "Nudge" needs push to someone else's
+device, and extending the occurrence horizon needs a daily job that knows the
+household's timezone.
