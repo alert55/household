@@ -136,10 +136,9 @@ create table event (
 
 create index event_household_starts_idx on event (household_id, starts_at);
 
--- KNOWN GAP: events are single instances. A weekly swim class must currently be
--- entered week by week. Giving events a recurrence means giving them a horizon
--- and a materialisation job too — the same machinery task/occurrence already
--- has. See the note at the foot of this file.
+-- Events here are single instances. CLOSED IN 0003, which adds event_series and
+-- generates instances from it; an event with no series_id is still a one-off
+-- somebody entered by hand.
 
 -- ── Money ────────────────────────────────────────────────────────────────
 
@@ -173,8 +172,8 @@ create table bill (
 
 create index bill_due_idx on bill (household_id, due_on) where paid_at is null;
 
--- KNOWN GAP: bills are single rows. A monthly water bill is the same recurrence
--- problem as a weekly swim class.
+-- Bills here are single rows. CLOSED IN 0003 via bill_series, on the same
+-- mechanism as events — they were always the same gap.
 
 create table budget (
   id             uuid primary key default gen_random_uuid(),
@@ -471,16 +470,12 @@ create policy event_admin on event
 
 -- ── Still to build ───────────────────────────────────────────────────────
 --
--- 1. Materialisation. Something must create occurrences out to the horizon and
---    extend it daily, per household and in that household's timezone. pg_cron
---    is the intended home (ADR 0004). The unique (task_id, due_on) above makes
---    it safe to run as often as we like.
+-- All three items once listed here are done, in the migrations that follow:
 --
--- 2. Recurrence for events and bills. Both gaps noted above are the same gap:
---    recurrence is currently a property of tasks alone. Whatever generates
---    occurrences should probably grow to serve all three rather than being
---    copied twice.
+-- 1. Materialisation, and the horizon it fills — 0002.
+-- 2. What happens to materialised occurrences when a recurrence is edited,
+--    per ADR 0002's rule — 0002.
+-- 3. Recurrence for events and bills, on the same mechanism — 0003.
 --
--- 3. What happens to materialised occurrences when a task's recurrence is
---    edited. ADR 0002 proposes: never touch the past, regenerate untouched
---    future occurrences, leave altered or completed ones alone.
+-- What is left is not schema: applying these to a real project, and proving the
+-- generation logic against a live Postgres rather than a parser.
