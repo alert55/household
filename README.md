@@ -53,13 +53,18 @@ Decisions that were genuinely contested live in [docs/adr](./docs/adr):
   are separate concepts
 - [0002](./docs/adr/0002-occurrences-are-stored.md) — occurrences are stored,
   not derived
+- [0003](./docs/adr/0003-screens-are-views-in-one-page.md) — screens are views in
+  one page, not separate documents
+- [0004](./docs/adr/0004-supabase-for-storage-auth-and-sync.md) — Supabase for
+  storage, auth and sync
 
 ## Where this could go next
 
-The screens are the easy part. Still undecided: whether this stays a single
-static page or grows real navigation, and where anything is persisted — no
-storage direction has been chosen yet.
+Nothing is persisted yet. Tick a task, reload, and it comes back — the screens
+are still hardcoded, and Nudge and Pay are buttons with no behaviour behind them.
+The storage direction is chosen (ADR 0004) but not built: no schema, no auth, no
+sync.
 
-The design already implies the hard bits: "Nudge" needs push to someone else's
+The design already implies the hard bits: Nudge needs push to someone else's
 device, and extending the occurrence horizon needs a daily job that knows the
 household's timezone.
