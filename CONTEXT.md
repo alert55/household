@@ -37,8 +37,9 @@ slips, and the unit a streak counts.
 _Avoid_: instance, entry, todo, assignment
 
 **Recurrence**:
-The rule describing how often a task comes back, and therefore which occurrences
-exist.
+The rule describing how often something comes back, and therefore which
+instances of it exist. Tasks, and the series behind repeating events and bills,
+all have one.
 _Avoid_: schedule, repeat, frequency, cadence
 
 **Assignee**:
@@ -66,6 +67,13 @@ _Avoid_: attendee, participant
 The member who carries an event out, when that is someone other than the
 subject. An event may have none.
 _Avoid_: driver, escort, chaperone
+
+**Series**:
+The standing rule behind a repeating event or bill — the swim class rather than
+this Friday's swim class, the water account rather than September's water bill.
+A task is the same idea for work, but keeps its own name because that is what a
+household calls it.
+_Avoid_: template, schedule, rule, recurring event
 
 ### Rewards
 
