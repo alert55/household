@@ -136,16 +136,10 @@
     fill($('tasks-list'), (today.occurrences || []).map(o => {
       const li = el('li', 'task');
 
-      const box = document.createElement('input');
-      box.className = 'check';
-      box.type = 'checkbox';
-      box.id = 'occ-' + o.id;
-      box.checked = Boolean(o.completed);
-      box.addEventListener('change', () => tick(o, box));
-      li.appendChild(box);
+      li.appendChild(taskCheck(o, refreshHome, 'home'));
 
       const label = el('label', 'task__label', o.title);
-      label.setAttribute('for', box.id);
+      label.setAttribute('for', 'home-occ-' + o.id);
       li.appendChild(label);
 
       li.appendChild(el('span', 'task__meta', o.meta || ''));
@@ -160,13 +154,25 @@
     seeAll.hidden = !more;
   }
 
-  async function tick(occurrence, box) {
+  // The same checkbox serves both screens; only what to redraw afterwards
+  // differs.
+  function taskCheck(occurrence, after, prefix) {
+    const box = document.createElement('input');
+    box.className = 'check';
+    box.type = 'checkbox';
+    box.id = prefix + '-occ-' + occurrence.id;
+    box.checked = Boolean(occurrence.completed);
+    box.addEventListener('change', () => tick(occurrence, box, after));
+    return box;
+  }
+
+  async function tick(occurrence, box, after) {
     const wanted = box.checked;
     box.disabled = true;
     try {
       await data.setOccurrenceDone(occurrence.id, wanted, occurrence);
       occurrence.completed = wanted;
-      await refreshHome();
+      await after();
     } catch (err) {
       // Put the box back where it was; the row never changed.
       box.checked = !wanted;
@@ -228,6 +234,63 @@
     // and deliberately quiet: failing to mark a nudge seen is not worth putting
     // an error in front of someone, and it changes nothing on this screen.
     if (data.markNudgesSeen) data.markNudgesSeen().catch(() => {});
+  }
+
+  // ── Rendering: tasks ───────────────────────────────────────────────────
+
+  async function refreshTasks() {
+    const t = await data.loadTasks();
+    $('tasks-date').textContent = t.date;
+
+    const carried = $('carried-card');
+    if (!t.slipped.length) {
+      carried.hidden = true;
+    } else {
+      carried.hidden = false;
+      $('carried-h').textContent = 'Carried over · ' + t.slipped.length;
+      fill($('carried-list'), t.slipped.map(o => {
+        const row = el('li', 'needs__row');
+        row.appendChild(el('span', 'dot'));
+        const text = el('div', 'needs__text');
+        text.appendChild(el('p', 'needs__title', o.title));
+        text.appendChild(el('p', 'needs__meta', o.meta));
+        row.appendChild(text);
+        return row;
+      }));
+    }
+
+    fill($('people-cards'), t.people.map(p => {
+      const card = el('section', 'card person-card');
+
+      const head = el('div', 'person-card__head');
+      const avatar = el('span', 'avatar avatar--sm avatar--' + p.accent, p.initial);
+      avatar.setAttribute('aria-hidden', 'true');
+      head.appendChild(avatar);
+      head.appendChild(el('span', 'person-card__name', p.name));
+      head.appendChild(el('span', 'person-card__count',
+        p.done === p.total ? 'all done' : p.done + ' of ' + p.total + ' done'));
+
+      if (p.streak) {
+        head.appendChild(el('span', 'streakpill', p.streak.days + ' days'));
+      }
+      card.appendChild(head);
+
+      const list = el('ul', 'tasks');
+      p.occurrences.forEach(o => {
+        const li = el('li', 'task' + (o.completed ? ' task--done' : ''));
+        li.appendChild(taskCheck(o, refreshTasks, 'task'));
+
+        const label = el('label', 'task__label', o.title);
+        label.setAttribute('for', 'task-occ-' + o.id);
+        li.appendChild(label);
+
+        if (o.points) li.appendChild(el('span', 'task__points', '+' + o.points));
+        if (o.time) li.appendChild(el('span', 'task__meta', o.time));
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+      return card;
+    }));
   }
 
   // ── Rendering: money ───────────────────────────────────────────────────
@@ -320,6 +383,7 @@
     show(name);
     try {
       if (name === 'home') await refreshHome();
+      if (name === 'tasks') await refreshTasks();
       if (name === 'money') await refreshMoney();
     } catch (err) {
       banner('Could not load — ' + (err.message || 'unknown error'), 'bad');

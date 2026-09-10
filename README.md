@@ -97,5 +97,5 @@ met a live Postgres. The Supabase source in `data.js` is unrun for the same
 reason; only the demo path has been exercised.
 
 Nudge and Pay work, but a nudge only waits for the other person to open the app
-— push to their device is not something ADR 0004 gives us for free. Tasks and
-Kitchen are empty screens.
+— push to their device is not something ADR 0004 gives us for free. Kitchen is
+still an empty screen.

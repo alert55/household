@@ -71,18 +71,23 @@
       alex: { key: 'alex', name: 'Alex', initial: 'A', accent: 'gold', role: 'child' }
     },
     meKey: (new URLSearchParams(location.search).get('as') || 'jamie').toLowerCase(),
-    doneElsewhere: 4,
-    totalToday: 10,
-    people: [
-      { initial: 'J', accent: 'sage', done: 1, total: 2 },
-      { initial: 'S', accent: 'clay', done: 1, total: 3 },
-      { initial: 'A', accent: 'gold', done: 1, total: 3 }
-    ],
+    // Today's occurrences, and the single source of every count derived from
+    // them. The design had a header reading "4 of 10 done" above per-person
+    // bars reading 1/2, 1/3 and 1/3 — which is 3 of 8. A mockup can hold both
+    // numbers at once; a screen that lists every occurrence cannot.
+    //
+    // `at` is minutes past midnight, used for ordering. The label is for
+    // reading; sorting on it would put 10:00a after 2:45p.
     occurrences: [
-      { id: 'demo-pickup', title: 'School drop-off', meta: 'Sam · 2:45p', completed: false },
-      { id: 'demo-dog', title: 'Feed the dog', meta: 'Alex', completed: false }
+      { id: 'o-dropoff', title: 'School drop-off', assignee: 'sam', time: '2:45p', at: 885, points: 0, completed: false },
+      { id: 'o-dishes', title: 'Dishes after dinner', assignee: 'jamie', time: '7:00p', at: 1140, points: 0, completed: false },
+      { id: 'o-dog', title: 'Feed the dog', assignee: 'alex', time: null, at: null, points: 5, completed: false },
+      { id: 'o-toys', title: 'Tidy toys', assignee: 'alex', time: null, at: null, points: 10, completed: false },
+      { id: 'o-laundry', title: 'Laundry', assignee: 'sam', time: null, at: null, points: 0, completed: false },
+      { id: 'o-homework', title: 'Homework', assignee: 'alex', time: null, at: null, points: 10, completed: true },
+      { id: 'o-plants', title: 'Water the plants', assignee: 'sam', time: null, at: null, points: 0, completed: true },
+      { id: 'o-grocery', title: 'Grocery run', assignee: 'jamie', time: null, at: null, points: 0, completed: true }
     ],
-    remaining: 6,
     needsYou: [
       { id: 'demo-trash', kind: 'occurrence', title: 'Trash to the curb', assignee: 'alex', slipped: 'slipped yesterday', urgent: true },
       { id: 'demo-water', kind: 'bill', title: 'Water bill · ฿740', meta: 'Due today', urgent: true }
@@ -91,7 +96,7 @@
     // so the receiving end is visible at ?as=alex without having to arrange it.
     // It changes nothing for Jamie, who is not the one being nudged.
     nudges: [{ occurrenceId: 'demo-trash', from: 'sam', to: 'alex', seen: false }],
-    streak: { name: 'Alex', days: 5, target: 7, note: 'Homework 5 days straight. 2 more → movie night.' },
+    streak: { member: 'alex', name: 'Alex', days: 5, target: 7, note: 'Homework 5 days straight. 2 more → movie night.' },
     pantry: { count: 3, items: 'Milk, dish soap, rice' },
     week: { spent: 3120, ceiling: 6000, daysLeft: 3 },
     nextEvent: { dow: 'Fri', day: 11, title: 'Alex · swim class', meta: '5:30p · Sam driving' },
@@ -109,6 +114,35 @@
   };
 
   demo.me = demo.members[demo.meKey] || demo.members.jamie;
+
+  // Timed things first, in time order; the rest are "sometime today" and sort
+  // by name so the list does not shuffle between renders.
+  function demoOrdered() {
+    return demo.occurrences.slice().sort((a, b) => {
+      if (a.at !== null && b.at !== null) return a.at - b.at;
+      if (a.at !== null) return -1;
+      if (b.at !== null) return 1;
+      return a.title.localeCompare(b.title);
+    });
+  }
+
+  function demoByPerson() {
+    return Object.keys(demo.members).map(key => {
+      const member = demo.members[key];
+      const mine = demoOrdered().filter(o => o.assignee === key);
+      return {
+        key: key,
+        name: member.name,
+        initial: member.initial,
+        accent: member.accent,
+        role: member.role,
+        done: mine.filter(o => o.completed).length,
+        total: mine.length,
+        streak: key === demo.streak.member ? { days: demo.streak.days, target: demo.streak.target } : null,
+        occurrences: mine
+      };
+    }).filter(p => p.total > 0);
+  }
 
   // Turns the stored rows into what this member should see: whether they may
   // act, and whether anyone is waiting on them.
@@ -155,7 +189,9 @@
 
     async loadBoard() {
       const now = new Date();
-      const done = demo.doneElsewhere + demo.occurrences.filter(o => o.completed).length;
+      const ordered = demoOrdered();
+      const done = demo.occurrences.filter(o => o.completed).length;
+      const open = ordered.filter(o => !o.completed);
       return {
         date: DAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate(),
         greeting: 'Morning, ' + demo.me.name,
@@ -163,10 +199,18 @@
         needsYou: demoNeedsYou(),
         today: {
           done: done,
-          total: demo.totalToday,
-          people: demo.people,
-          occurrences: demo.occurrences,
-          remaining: demo.remaining
+          total: demo.occurrences.length,
+          people: demoByPerson().map(p => ({
+            initial: p.initial, accent: p.accent, done: p.done, total: p.total
+          })),
+          // The board shows what is next, not everything; the rest is a tap away.
+          occurrences: open.slice(0, 2).map(o => ({
+            id: o.id,
+            title: o.title,
+            meta: [demo.members[o.assignee].name, o.time].filter(Boolean).join(' · '),
+            completed: o.completed
+          })),
+          remaining: demo.occurrences.length
         },
         streak: demo.streak,
         pantry: demo.pantry,
@@ -175,6 +219,30 @@
           percent: Math.round((demo.week.spent / demo.week.ceiling) * 100)
         },
         nextEvent: demo.nextEvent
+      };
+    },
+
+    async loadTasks() {
+      const now = new Date();
+      return {
+        date: DAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate(),
+        slipped: demo.needsYou.filter(n => n.kind === 'occurrence').map(n => ({
+          id: n.id,
+          title: n.title,
+          meta: demo.members[n.assignee].name + ' · ' + n.slipped
+        })),
+        people: demoByPerson().map(p => ({
+          key: p.key, name: p.name, initial: p.initial, accent: p.accent, role: p.role,
+          done: p.done, total: p.total, streak: p.streak,
+          occurrences: p.occurrences.map(o => ({
+            id: o.id,
+            title: o.title,
+            time: o.time,
+            // Only a child earns points, so only a child is shown them.
+            points: p.role === 'child' ? o.points : 0,
+            completed: o.completed
+          }))
+        }))
       };
     },
 
@@ -406,6 +474,66 @@
             title: event.title,
             meta: [timeLabel(event.starts_at), initialName(c, event.responsible_id)].filter(Boolean).join(' · ')
           } : null
+        };
+      },
+
+      async loadTasks() {
+        const c = await context();
+        const today = todayIn(c.household.timezone);
+
+        const [todayRes, slippedRes, streakRes] = await Promise.all([
+          sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today),
+          sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('slipped', true).lt('due_on', today).order('due_on'),
+          sb.from('streak_current').select('*').eq('household_id', c.household.id)
+        ]);
+
+        const rows = todayRes.data || [];
+        const streaks = streakRes.data || [];
+
+        // Timed first in time order, then the rest by name so the list is
+        // stable between renders.
+        const order = (a, b) => {
+          if (a.due_time && b.due_time) return a.due_time.localeCompare(b.due_time);
+          if (a.due_time) return -1;
+          if (b.due_time) return 1;
+          return (a.title || '').localeCompare(b.title || '');
+        };
+
+        const people = c.members.map(m => {
+          const mine = rows.filter(r => r.effective_assignee_id === m.id).sort(order);
+          const best = streaks
+            .filter(s => s.member_id === m.id)
+            .sort((a, b) => b.length - a.length)[0];
+
+          return {
+            key: m.id,
+            name: m.display_name,
+            initial: initial(m),
+            accent: m.accent,
+            role: m.role,
+            done: mine.filter(r => r.completed_at).length,
+            total: mine.length,
+            streak: best ? { days: best.length, target: 7 } : null,
+            occurrences: mine.map(o => ({
+              id: o.id,
+              title: o.title,
+              time: o.due_time ? timeLabel(o.due_at) : null,
+              points: m.role === 'child' ? (o.points_on_offer || 0) : 0,
+              completed: Boolean(o.completed_at),
+              assignee: o.effective_assignee_id
+            }))
+          };
+        }).filter(p => p.total > 0);
+
+        return {
+          date: dayName(today) + ', ' + MONTHS[Number(today.slice(5, 7)) - 1] + ' ' + Number(today.slice(8, 10)),
+          slipped: (slippedRes.data || []).map(o => ({
+            id: o.id,
+            title: o.title,
+            meta: (initialName(c, o.effective_assignee_id) || 'Unassigned') +
+              ' · slipped ' + relativeDay(o.due_on, today)
+          })),
+          people: people
         };
       },
 

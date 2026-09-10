@@ -447,6 +447,49 @@ a:hover { color: var(--terracotta-ink); }
 
 .tabbar[hidden] { display: none; }
 
+/* ── Tasks ─────────────────────────────────────────────── */
+
+.section-label { margin: 4px 4px -2px; }
+
+.person-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.person-card { padding: 14px 18px 6px; }
+
+.person-card__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 4px;
+}
+
+.person-card__name { font-size: 13.5px; font-weight: 600; }
+.person-card__count { flex: 1; font-size: 12px; color: var(--faint); }
+
+.streakpill {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gold-ink);
+  background: var(--cream);
+  border-radius: 99px;
+  padding: 4px 9px;
+}
+
+.task__points {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: #C0A44E;
+}
+
+/* A finished one stays visible — the day reads as a record, not a clean slate. */
+.task--done { opacity: .45; }
+.task--done .task__label { text-decoration: line-through; }
+
 /* ── Money ─────────────────────────────────────────────── */
 
 .budget { padding: 16px 18px 18px; }

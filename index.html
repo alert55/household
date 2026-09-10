@@ -158,8 +158,24 @@
 
   <!-- ══ Not built yet ═════════════════════════════════ -->
   <section class="view" id="view-tasks" hidden>
-    <header class="topbar"><div><p class="eyebrow">Household</p><h1 class="greeting">Tasks</h1></div></header>
-    <main class="board"><p class="empty span-2">Not built yet. The home board shows today's occurrences; this is where all of them will live.</p></main>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow" id="tasks-date"></p>
+        <h1 class="greeting">Tasks</h1>
+      </div>
+    </header>
+
+    <main class="board">
+      <section class="card card--dark span-2" id="carried-card" aria-labelledby="carried-h" hidden>
+        <div class="card__head">
+          <h2 class="eyebrow eyebrow--gold" id="carried-h">Carried over</h2>
+        </div>
+        <ul class="needs" id="carried-list"></ul>
+      </section>
+
+      <p class="eyebrow span-2 section-label">Today, by person</p>
+      <div class="span-2 person-cards" id="people-cards"></div>
+    </main>
   </section>
 
   <section class="view" id="view-kitchen" hidden>
