@@ -293,6 +293,107 @@
     }));
   }
 
+  // ── Rendering: kitchen ─────────────────────────────────────────────────
+
+  async function refreshKitchen() {
+    const k = await data.loadKitchen();
+
+    $('kitchen-sub').textContent = k.low.length
+      ? k.low.length + (k.low.length === 1 ? ' thing' : ' things') + ' running low'
+      : 'Everything in stock';
+
+    // Running low
+    const lowCard = $('low-card');
+    lowCard.hidden = !k.low.length;
+    if (k.low.length) {
+      $('low-card-h').textContent = 'Running low · ' + k.low.length;
+      fill($('low-list'), k.low.map(item => {
+        const li = el('li');
+        const pill = el('button', 'pill', item.name);
+        pill.type = 'button';
+        pill.title = 'Put back in stock';
+        pill.addEventListener('click', () => guard(pill, async () => {
+          await data.setPantryLow(item.id, false);
+          await refreshKitchen();
+        }));
+        li.appendChild(pill);
+        return li;
+      }));
+    }
+
+    // The open list
+    const listCard = $('list-card');
+    listCard.hidden = !k.list;
+    if (k.list) {
+      $('list-count').textContent = k.list.got + ' of ' + k.list.items.length + ' got';
+      fill($('list-items'), k.list.items.map(item => {
+        const li = el('li', 'task' + (item.got ? ' task--done' : ''));
+
+        const box = document.createElement('input');
+        box.className = 'check';
+        box.type = 'checkbox';
+        box.id = 'item-' + item.id;
+        box.checked = item.got;
+        box.addEventListener('change', () => guard(box, async () => {
+          await data.setListItemGot(item.id, box.checked);
+          await refreshKitchen();
+        }, () => { box.checked = !box.checked; }));
+        li.appendChild(box);
+
+        const label = el('label', 'task__label', item.label);
+        label.setAttribute('for', box.id);
+        li.appendChild(label);
+        return li;
+      }));
+
+      const finish = $('finish-shop');
+      finish.textContent = k.list.got
+        ? 'Finish the shop · ' + k.list.got + ' restocked →'
+        : 'Finish the shop →';
+      finish.onclick = () => guard(finish, async () => {
+        const n = await data.completeShoppingList(k.list.id);
+        flash(n ? n + (n === 1 ? ' thing' : ' things') + ' back in stock.' : 'List closed.', 'good');
+        await refreshKitchen();
+      });
+    }
+
+    // Everything else
+    $('stock-count').textContent = k.stocked.length + ' items';
+    fill($('stock-list'), k.stocked.map(item => {
+      const li = el('li', 'stockrow');
+      li.appendChild(el('span', 'stockrow__name', item.name));
+
+      const mark = el('button', 'chip chip--quiet chip--light', 'Running low');
+      mark.type = 'button';
+      mark.addEventListener('click', () => guard(mark, async () => {
+        await data.setPantryLow(item.id, true);
+        await refreshKitchen();
+      }));
+      li.appendChild(mark);
+      return li;
+    }));
+  }
+
+  // Disables a control while its write is in flight, and puts the message on
+  // screen if it fails. `undo` restores anything the click changed optimistically.
+  async function guard(control, run, undo) {
+    control.disabled = true;
+    try {
+      await run();
+    } catch (err) {
+      if (undo) undo();
+      flash(err.message || 'That did not work.', 'bad');
+    } finally {
+      control.disabled = false;
+    }
+  }
+
+  $('add-to-list').addEventListener('click', () => guard($('add-to-list'), async () => {
+    await data.addLowToList();
+    flash('Added to the list.', 'good');
+    await refreshKitchen();
+  }));
+
   // ── Rendering: money ───────────────────────────────────────────────────
 
   async function refreshMoney() {
@@ -384,6 +485,7 @@
     try {
       if (name === 'home') await refreshHome();
       if (name === 'tasks') await refreshTasks();
+      if (name === 'kitchen') await refreshKitchen();
       if (name === 'money') await refreshMoney();
     } catch (err) {
       banner('Could not load — ' + (err.message || 'unknown error'), 'bad');

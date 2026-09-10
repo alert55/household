@@ -179,8 +179,40 @@
   </section>
 
   <section class="view" id="view-kitchen" hidden>
-    <header class="topbar"><div><p class="eyebrow">Household</p><h1 class="greeting">Kitchen</h1></div></header>
-    <main class="board"><p class="empty span-2">Not built yet. Pantry items and the shopping list belong here.</p></main>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow" id="kitchen-sub"></p>
+        <h1 class="greeting">Kitchen</h1>
+      </div>
+    </header>
+
+    <main class="board">
+      <section class="card card--cream span-2" id="low-card" aria-labelledby="low-card-h" hidden>
+        <div class="card__head">
+          <h2 class="eyebrow" id="low-card-h">Running low</h2>
+          <button class="chip chip--cream" type="button" id="add-to-list">Add to list</button>
+        </div>
+        <ul class="pills" id="low-list"></ul>
+        <p class="hint">Tap one to put it back in stock.</p>
+      </section>
+
+      <section class="card span-2" id="list-card" aria-labelledby="list-h" hidden>
+        <div class="card__head card__head--baseline">
+          <h2 class="eyebrow" id="list-h">Shopping list</h2>
+          <p class="card__aside" id="list-count"></p>
+        </div>
+        <ul class="tasks" id="list-items"></ul>
+        <button class="linkbutton" type="button" id="finish-shop">Finish the shop →</button>
+      </section>
+
+      <section class="card span-2" id="stock-card" aria-labelledby="stock-h">
+        <div class="card__head card__head--baseline">
+          <h2 class="eyebrow" id="stock-h">In stock</h2>
+          <p class="card__aside" id="stock-count"></p>
+        </div>
+        <ul id="stock-list"></ul>
+      </section>
+    </main>
   </section>
 
   <!-- ══ Tab bar ═══════════════════════════════════════ -->

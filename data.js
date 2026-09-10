@@ -97,7 +97,19 @@
     // It changes nothing for Jamie, who is not the one being nudged.
     nudges: [{ occurrenceId: 'demo-trash', from: 'sam', to: 'alex', seen: false }],
     streak: { member: 'alex', name: 'Alex', days: 5, target: 7, note: 'Homework 5 days straight. 2 more → movie night.' },
-    pantry: { count: 3, items: 'Milk, dish soap, rice' },
+    pantryItems: [
+      { id: 'p-milk', name: 'Milk', low: true },
+      { id: 'p-soap', name: 'Dish soap', low: true },
+      { id: 'p-rice', name: 'Rice', low: true },
+      { id: 'p-eggs', name: 'Eggs', low: false },
+      { id: 'p-coffee', name: 'Coffee', low: false },
+      { id: 'p-bread', name: 'Bread', low: false },
+      { id: 'p-oil', name: 'Cooking oil', low: false },
+      { id: 'p-pasta', name: 'Pasta', low: false },
+      { id: 'p-powder', name: 'Washing powder', low: false }
+    ],
+    // No open list to begin with, so pressing "Add to list" is what opens one.
+    list: null,
     week: { spent: 3120, ceiling: 6000, daysLeft: 3 },
     nextEvent: { dow: 'Fri', day: 11, title: 'Alex · swim class', meta: '5:30p · Sam driving' },
     billsDue: [
@@ -124,6 +136,10 @@
       if (b.at !== null) return 1;
       return a.title.localeCompare(b.title);
     });
+  }
+
+  function demoLow() {
+    return demo.pantryItems.filter(p => p.low);
   }
 
   function demoByPerson() {
@@ -213,7 +229,10 @@
           remaining: demo.occurrences.length
         },
         streak: demo.streak,
-        pantry: demo.pantry,
+        pantry: {
+          count: demoLow().length,
+          items: demoLow().map(p => p.name).join(', ')
+        },
         week: {
           spent: money(demo.week.spent, 'THB'),
           percent: Math.round((demo.week.spent / demo.week.ceiling) * 100)
@@ -244,6 +263,55 @@
           }))
         }))
       };
+    },
+
+    async loadKitchen() {
+      return {
+        low: demoLow().map(p => ({ id: p.id, name: p.name })),
+        stocked: demo.pantryItems.filter(p => !p.low).map(p => ({ id: p.id, name: p.name })),
+        list: demo.list ? {
+          id: demo.list.id,
+          items: demo.list.items.slice(),
+          got: demo.list.items.filter(i => i.got).length
+        } : null
+      };
+    },
+
+    async setPantryLow(id, low) {
+      const item = demo.pantryItems.find(p => p.id === id);
+      if (!item) throw new Error('no such item');
+      item.low = low;
+      return true;
+    },
+
+    async addLowToList() {
+      const low = demoLow();
+      if (!low.length) throw new Error('nothing is running low');
+      if (!demo.list) demo.list = { id: 'list-1', items: [] };
+      low.forEach(p => {
+        if (!demo.list.items.some(i => i.pantryItemId === p.id)) {
+          demo.list.items.push({ id: 'i-' + p.id, pantryItemId: p.id, label: p.name, got: false });
+        }
+      });
+      return demo.list.id;
+    },
+
+    async setListItemGot(id, got) {
+      const item = demo.list && demo.list.items.find(i => i.id === id);
+      if (!item) throw new Error('not on the list');
+      item.got = got;
+      return true;
+    },
+
+    async completeShoppingList() {
+      if (!demo.list) throw new Error('no open list');
+      let restocked = 0;
+      demo.list.items.filter(i => i.got).forEach(i => {
+        const p = demo.pantryItems.find(x => x.id === i.pantryItemId);
+        if (p) { p.low = false; restocked++; }
+      });
+      demo.list = null;
+      return restocked;
     },
 
     async loadMoney() {
@@ -535,6 +603,67 @@
           })),
           people: people
         };
+      },
+
+      async loadKitchen() {
+        const c = await context();
+
+        const [pantryRes, listRes] = await Promise.all([
+          sb.from('pantry_item').select('id, name, is_low').eq('household_id', c.household.id).order('name'),
+          sb.from('shopping_list').select('id').eq('household_id', c.household.id).is('completed_at', null).order('created_at', { ascending: false }).limit(1)
+        ]);
+
+        const pantry = pantryRes.data || [];
+        const open = listRes.data && listRes.data[0] ? listRes.data[0] : null;
+
+        let list = null;
+        if (open) {
+          const { data: items } = await sb
+            .from('shopping_list_item')
+            .select('id, label, got, pantry_item_id')
+            .eq('shopping_list_id', open.id)
+            .order('label');
+          const rows = items || [];
+          list = {
+            id: open.id,
+            items: rows.map(i => ({ id: i.id, label: i.label, got: i.got, pantryItemId: i.pantry_item_id })),
+            got: rows.filter(i => i.got).length
+          };
+        }
+
+        return {
+          low: pantry.filter(p => p.is_low).map(p => ({ id: p.id, name: p.name })),
+          stocked: pantry.filter(p => !p.is_low).map(p => ({ id: p.id, name: p.name })),
+          list: list
+        };
+      },
+
+      async setPantryLow(id, low) {
+        const { error } = await sb.from('pantry_item').update({
+          is_low: low,
+          marked_low_at: low ? new Date().toISOString() : null
+        }).eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async setListItemGot(id, got) {
+        const { error } = await sb.from('shopping_list_item').update({ got: got }).eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      // Both of these move more than one row, so both are functions.
+      async addLowToList() {
+        const { data, error } = await sb.rpc('add_low_to_list');
+        if (error) throw new Error(error.message);
+        return data;
+      },
+
+      async completeShoppingList(listId) {
+        const { data, error } = await sb.rpc('complete_shopping_list', { target_list: listId });
+        if (error) throw new Error(error.message);
+        return data || 0;
       },
 
       async loadMoney() {
