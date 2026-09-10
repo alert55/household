@@ -79,6 +79,15 @@ a:hover { color: var(--terracotta-ink); }
   background: var(--bg);
 }
 
+/* One page, four views. Only the routed one is in the layout. */
+.view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.view[hidden] { display: none; }
+
 /* ── Header ────────────────────────────────────────────── */
 
 .topbar {
@@ -325,7 +334,8 @@ a:hover { color: var(--terracotta-ink); }
 
 /* ── Stat cards ────────────────────────────────────────── */
 
-.stat { padding: 16px 17px; }
+.stat { padding: 16px 17px; color: var(--ink); }
+.stat:hover { color: var(--ink); }
 .stat__icon--sage { color: var(--sage); }
 .stat__icon--terracotta { color: var(--terracotta); }
 
@@ -378,6 +388,49 @@ a:hover { color: var(--terracotta-ink); }
 .upcoming__meta { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 
 .chevron { flex: none; color: #C6BCAF; }
+
+/* ── Money ─────────────────────────────────────────────── */
+
+.budget { padding: 16px 18px 18px; }
+
+.budget__figure {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.budget__spent { font-family: var(--serif); font-size: 34px; line-height: 1; }
+.budget__ceiling { font-size: 13px; color: var(--muted); }
+.budget .track { margin-top: 14px; }
+.budget__left { font-size: 12.5px; color: var(--muted); margin-top: 9px; }
+
+/* A bill that is due but not yet pressing. */
+.dot--calm { background: var(--dark-muted); }
+
+.ledger { padding: 16px 18px 8px; }
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.entry__body { flex: 1; min-width: 0; }
+.entry__title { display: block; font-size: 14px; font-weight: 500; }
+.entry__meta { display: block; font-size: 11.5px; color: var(--faint); margin-top: 2px; }
+.entry__amount { font-family: var(--serif); font-size: 15px; flex: none; }
+
+.avatar--xs { width: 26px; height: 26px; font-size: 10px; }
+
+.empty {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  padding: 6px 4px;
+}
 
 /* ── Tab bar ───────────────────────────────────────────── */
 
