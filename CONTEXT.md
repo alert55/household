@@ -52,6 +52,12 @@ An occurrence whose moment passed without it being done. Describes the
 occurrence, never the member.
 _Avoid_: missed, overdue, late, failed
 
+**Nudge**:
+A reminder one member sends another about an occurrence they have let slip. At
+most one a day, from any one person about any one occurrence — a household needs
+a reminder, not a way to nag.
+_Avoid_: reminder, poke, ping, notification, chase
+
 ### Things that happen
 
 **Event**:

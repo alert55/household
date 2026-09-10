@@ -36,12 +36,22 @@
     $(trackId).setAttribute('aria-valuenow', String(pct));
   }
 
+  // The standing message (the demo notice), which transient ones return to.
+  let baseMessage = null;
+  let bannerTimer = null;
+
   function banner(message, tone) {
     const b = $('banner');
     if (!message) { b.hidden = true; return; }
     b.textContent = message;
     b.className = 'banner' + (tone ? ' banner--' + tone : '');
     b.hidden = false;
+  }
+
+  function flash(message, tone) {
+    clearTimeout(bannerTimer);
+    banner(message, tone);
+    bannerTimer = setTimeout(() => banner(baseMessage), 2600);
   }
 
   // ── Rendering: home ────────────────────────────────────────────────────
@@ -61,11 +71,33 @@
       text.appendChild(el('p', 'needs__meta', item.meta));
       row.appendChild(text);
 
-      const button = el('button', 'chip', item.action);
-      button.type = 'button';
-      row.appendChild(button);
+      // No action when there is nothing this member may do about it — a child
+      // cannot pay, and nobody nudges themselves.
+      if (item.action) {
+        const button = el('button', 'chip', item.action);
+        button.type = 'button';
+        button.addEventListener('click', () => act(item, button));
+        row.appendChild(button);
+      }
       return row;
     }));
+  }
+
+  async function act(item, button) {
+    const was = button.textContent;
+    button.disabled = true;
+    button.textContent = '…';
+    try {
+      if (item.kind === 'bill') await data.payBill(item.id);
+      else await data.sendNudge(item.id);
+
+      flash(item.kind === 'bill' ? 'Paid, and recorded as an expense.' : 'Nudged.', 'good');
+      await refreshHome();
+    } catch (err) {
+      button.disabled = false;
+      button.textContent = was;
+      flash(err.message || 'That did not work.', 'bad');
+    }
   }
 
   function renderPeople(people) {
@@ -135,7 +167,7 @@
     } catch (err) {
       // Put the box back where it was; the row never changed.
       box.checked = !wanted;
-      banner('Could not save that — ' + (err.message || 'try again'), 'bad');
+      flash('Could not save that — ' + (err.message || 'try again'), 'bad');
     } finally {
       box.disabled = false;
     }
@@ -217,6 +249,20 @@
         row.appendChild(text);
         const pay = el('button', 'chip', 'Pay');
         pay.type = 'button';
+        pay.addEventListener('click', async () => {
+          const was = pay.textContent;
+          pay.disabled = true;
+          pay.textContent = '…';
+          try {
+            await data.payBill(b.id);
+            flash('Paid, and recorded as an expense.', 'good');
+            await refreshMoney();
+          } catch (err) {
+            pay.disabled = false;
+            pay.textContent = was;
+            flash(err.message || 'That did not work.', 'bad');
+          }
+        });
         row.appendChild(pay);
         return row;
       }));
@@ -314,7 +360,8 @@
 
     $('tabbar').hidden = false;
     if (!data.isLive) {
-      banner('Demo data — nothing is saved. Add your project to config.js to go live.');
+      baseMessage = 'Demo data — nothing is saved. Add your project to config.js to go live.';
+      banner(baseMessage);
     }
     await go(routeFromHash());
   })();

@@ -75,9 +75,10 @@
     ],
     remaining: 6,
     needsYou: [
-      { id: 'demo-trash', title: 'Trash to the curb', meta: 'Alex · slipped yesterday', action: 'Nudge', urgent: true },
-      { id: 'demo-water', title: 'Water bill · ฿740', meta: 'Due today', action: 'Pay', urgent: true }
+      { id: 'demo-trash', kind: 'occurrence', title: 'Trash to the curb', meta: 'Alex · slipped yesterday', action: 'Nudge', urgent: true },
+      { id: 'demo-water', kind: 'bill', title: 'Water bill · ฿740', meta: 'Due today', action: 'Pay', urgent: true }
     ],
+    nudgedToday: [],
     streak: { name: 'Alex', days: 5, target: 7, note: 'Homework 5 days straight. 2 more → movie night.' },
     pantry: { count: 3, items: 'Milk, dish soap, rice' },
     week: { spent: 3120, ceiling: 6000, daysLeft: 3 },
@@ -150,6 +151,29 @@
     async setOccurrenceDone(id, done) {
       const row = demo.occurrences.find(o => o.id === id);
       if (row) row.completed = done;
+      return true;
+    },
+
+    async payBill(id) {
+      const bill = demo.billsDue.find(b => b.id === id);
+      if (!bill) throw new Error('no such bill');
+      if (demo.me.role !== 'adult') throw new Error('only an adult can pay a bill');
+
+      demo.billsDue = demo.billsDue.filter(b => b.id !== id);
+      demo.needsYou = demo.needsYou.filter(n => !(n.kind === 'bill' && n.id === id));
+      demo.expenses.unshift({
+        id: 'e-' + id, label: bill.label, amount: bill.amount,
+        who: demo.me.name, initial: demo.me.initial, accent: demo.me.accent, when: 'today'
+      });
+      demo.week.spent += bill.amount;
+      return true;
+    },
+
+    async sendNudge(id) {
+      if (demo.nudgedToday.indexOf(id) !== -1) {
+        throw new Error('already nudged about that today');
+      }
+      demo.nudgedToday.push(id);
       return true;
     }
   };
@@ -231,15 +255,18 @@
 
         const needsYou = (slipped.data || []).map(o => ({
           id: o.id,
+          kind: 'occurrence',
           title: o.title,
           meta: (initialName(c, o.effective_assignee_id) || 'Unassigned') + ' · slipped ' + relativeDay(o.due_on, today),
-          action: 'Nudge',
+          // Nothing to nudge if it is already yours, or nobody holds it.
+          action: (o.effective_assignee_id && o.effective_assignee_id !== c.me.id) ? 'Nudge' : null,
           urgent: true
         })).concat((bills.data || []).map(b => ({
           id: b.id,
+          kind: 'bill',
           title: b.label + ' · ' + money(b.amount, cur),
           meta: b.due_on === today ? 'Due today' : 'Due ' + relativeDay(b.due_on, today),
-          action: 'Pay',
+          action: c.me.role === 'adult' ? 'Pay' : null,
           urgent: true
         })));
 
@@ -358,6 +385,21 @@
         }).eq('id', id);
 
         if (error) throw error;
+        return true;
+      },
+
+      // Both of these are database functions rather than client-side writes.
+      // Paying is two writes that must not half-happen, and nudging has rules
+      // about who and how often that the client should not be trusted with.
+      async payBill(id) {
+        const { error } = await sb.rpc('pay_bill', { target_bill: id });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async sendNudge(occurrenceId) {
+        const { error } = await sb.rpc('send_nudge', { target_occurrence: occurrenceId });
+        if (error) throw new Error(error.message);
         return true;
       }
     };

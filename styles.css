@@ -401,6 +401,9 @@ a:hover { color: var(--terracotta-ink); }
 }
 
 .banner--bad { background: #F6E3DA; color: var(--terracotta-ink); }
+.banner--good { background: #E4EBE1; color: var(--sage-ink); }
+
+.chip:disabled { opacity: .55; cursor: default; }
 
 .signin { padding: 20px 18px; }
 .signin__lead { font-size: 13.5px; color: var(--muted); line-height: 1.5; }

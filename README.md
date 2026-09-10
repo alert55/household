@@ -90,6 +90,6 @@ real database — treat everything under `supabase/` as unrun code until it has
 met a live Postgres. The Supabase source in `data.js` is unrun for the same
 reason; only the demo path has been exercised.
 
-Nudge and Pay are still buttons with no behaviour behind them. Nudge needs push
-to someone else's device, which ADR 0004 does not give us for free. Tasks and
+Nudge and Pay work, but a nudge only waits for the other person to open the app
+— push to their device is not something ADR 0004 gives us for free. Tasks and
 Kitchen are empty screens.
