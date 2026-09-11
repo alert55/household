@@ -87,6 +87,12 @@
     return h + ':' + String(m).padStart(2, '0') + suffix;
   }
 
+  // 885 -> '14:45', the form a time input wants back when an edit form is filled.
+  function toHHMM(mins) {
+    if (mins === null || mins === undefined) return '';
+    return String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
+  }
+
   function relativeDay(iso, today) {
     if (iso === today) return 'today';
     if (iso === addDays(today, -1)) return 'yesterday';
@@ -190,10 +196,16 @@
 
   demo.me = demo.members[demo.meKey] || demo.members.jamie;
 
+  // Today's occurrences that still count. A skipped one is off the board and out
+  // of every total — it was a decision, not a job left undone.
+  function demoToday() {
+    return demo.occurrences.filter(o => !o.skipped);
+  }
+
   // Timed things first, in time order; the rest are "sometime today" and sort
   // by name so the list does not shuffle between renders.
   function demoOrdered() {
-    return demo.occurrences.slice().sort((a, b) => {
+    return demoToday().slice().sort((a, b) => {
       if (a.at !== null && b.at !== null) return a.at - b.at;
       if (a.at !== null) return -1;
       if (b.at !== null) return 1;
@@ -296,7 +308,7 @@
     async loadBoard() {
       const now = new Date();
       const ordered = demoOrdered();
-      const done = demo.occurrences.filter(o => o.completed).length;
+      const done = demoToday().filter(o => o.completed).length;
       const open = ordered.filter(o => !o.completed);
       return {
         date: DAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate(),
@@ -305,7 +317,7 @@
         needsYou: demoNeedsYou(),
         today: {
           done: done,
-          total: demo.occurrences.length,
+          total: demoToday().length,
           people: demoByPerson().map(p => ({
             initial: p.initial, accent: p.accent, done: p.done, total: p.total
           })),
@@ -316,7 +328,7 @@
             meta: [demo.members[o.assignee].name, o.time].filter(Boolean).join(' · '),
             completed: o.completed
           })),
-          remaining: demo.occurrences.length
+          remaining: demoToday().length
         },
         streak: demo.streak,
         pantry: {
@@ -369,10 +381,53 @@
             time: o.time,
             // Only a child earns points, so only a child is shown them.
             points: p.role === 'child' ? o.points : 0,
-            completed: o.completed
+            completed: o.completed,
+            // What an edit form needs to fill itself in.
+            edit: {
+              title: o.title,
+              assignee: o.assignee,
+              time: toHHMM(o.at),
+              recurs: o.recurs !== false
+            }
           }))
         }))
       };
+    },
+
+    // The demo only ever shows today, so "from now on" and "just today" land in
+    // the same place here. The difference is real in the live source, where the
+    // database regenerates the days ahead.
+    async editOccurrence(id, input) {
+      const o = demo.occurrences.find(x => x.id === id);
+      if (!o) throw new Error('no such task');
+      if (demo.me.role !== 'adult') throw new Error('only an adult can change a task');
+      if (!demo.members[input.assignee]) throw new Error('that person is not in this household');
+
+      if (input.title) o.title = input.title;
+      o.assignee = input.assignee;
+      o.at = input.time ? toMinutes(input.time) : null;
+      o.time = o.at === null ? null : fromMinutes(o.at);
+      return true;
+    },
+
+    async skipOccurrence(id) {
+      const o = demo.occurrences.find(x => x.id === id);
+      if (!o) throw new Error('no such task');
+      if (demo.me.role !== 'adult') throw new Error('only an adult can skip a task');
+      if (o.completed) throw new Error('that one is already done');
+      o.skipped = true;
+      return true;
+    },
+
+    // Retiring skips today's if it is not done, as the database does. Past
+    // occurrences would stay; the demo simply has none to show.
+    async retireTask(id) {
+      const o = demo.occurrences.find(x => x.id === id);
+      if (!o) throw new Error('no such task');
+      if (demo.me.role !== 'adult') throw new Error('only an adult can stop a task');
+      if (!o.completed) o.skipped = true;
+      o.retired = true;
+      return true;
     },
 
     async loadMembers() {
@@ -391,7 +446,8 @@
         time: at === null ? null : fromMinutes(at),
         at: at,
         points: input.points || 0,
-        completed: false
+        completed: false,
+        recurs: input.recurrence !== 'once'
       });
       return true;
     },
@@ -763,7 +819,17 @@
               time: o.due_time ? timeLabel(o.due_at) : null,
               points: m.role === 'child' ? (o.points_on_offer || 0) : 0,
               completed: Boolean(o.completed_at),
-              assignee: o.effective_assignee_id
+              assignee: o.effective_assignee_id,
+              taskId: o.task_id,
+              edit: {
+                title: o.title,
+                assignee: o.effective_assignee_id,
+                // due_time comes back as 'HH:MM:SS'; a time input wants 'HH:MM'.
+                time: o.due_time ? o.due_time.slice(0, 5) : '',
+                // occurrence_current does not carry the task's recurrence, so the
+                // scope choice is always offered; for a one-off it is harmless.
+                recurs: true
+              }
             }))
           };
         }).filter(p => p.total > 0);
@@ -1029,6 +1095,33 @@
             };
           })
         };
+      },
+
+      // Editing goes through functions because a member may write only
+      // completed_at directly (ADR 0005). Each checks for itself that the
+      // caller is an adult.
+      async editOccurrence(id, input) {
+        const { error } = await sb.rpc('edit_occurrence', {
+          p_occurrence: id,
+          p_title: input.title,
+          p_assignee: input.assignee || null,
+          p_due_time: input.time || null,
+          p_scope: input.scope === 'forward' ? 'forward' : 'this'
+        });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async skipOccurrence(id) {
+        const { error } = await sb.rpc('skip_occurrence', { p_occurrence: id });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async retireTask(occurrenceId, taskId) {
+        const { error } = await sb.rpc('retire_task', { p_task: taskId });
+        if (error) throw new Error(error.message);
+        return true;
       },
 
       // Only completed_at is sent — it is the only column a member may write

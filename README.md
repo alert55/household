@@ -107,6 +107,7 @@ and bills — offering only what the member opening it is allowed to create.
 Events and bills can repeat — weekly, daily or monthly — and the database
 generates their instances, so a weekly class is entered once.
 
-What is missing is editing. Anything added can be ticked, paid or marked low,
-but not renamed, reassigned, rescheduled or deleted — and that includes a series,
-so a repeating event added by mistake repeats for good.
+Tasks can be edited by an adult — renamed, reassigned or retimed for just today
+or from now on, skipped for a day, or stopped. Stopping retires a task rather than
+deleting it, so the streaks and points it already produced survive. Events,
+bills, expenses and pantry items cannot be edited yet.

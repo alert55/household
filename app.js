@@ -239,7 +239,8 @@
   // ── Rendering: tasks ───────────────────────────────────────────────────
 
   async function refreshTasks() {
-    const t = await data.loadTasks();
+    const [t, roster] = await Promise.all([data.loadTasks(), data.loadMembers()]);
+    const isAdult = roster.me.role === 'adult';
     $('tasks-date').textContent = t.date;
 
     const carried = $('carried-card');
@@ -286,6 +287,11 @@
 
         if (o.points) li.appendChild(el('span', 'task__points', '+' + o.points));
         if (o.time) li.appendChild(el('span', 'task__meta', o.time));
+
+        // A separate control, not the row: tapping the name still ticks it, which
+        // is what a child and anyone in a hurry wants. Adults only — the database
+        // refuses anyone else regardless (ADR 0005).
+        if (isAdult) li.appendChild(editButton('Edit ' + o.title, () => editTask(o)));
         list.appendChild(li);
       });
       card.appendChild(list);
@@ -685,6 +691,12 @@
     const match = KINDS.find(k => k.screen === here && (!k.adults || roster.me.role === 'adult'));
     if (match) sheetKind = match.key;
 
+    editing = null;
+    $('sheet-title').textContent = 'Add';
+    $('sheet-kinds').hidden = false;
+    $('sheet-submit').textContent = 'Add';
+    $('sheet-submit').hidden = false;
+    fill($('sheet-actions'), []);
     $('sheet-error').textContent = '';
     renderKinds();
     renderFields();
@@ -694,6 +706,141 @@
   function closeSheet() {
     $('sheet').hidden = true;
     $('sheet-form').reset();
+    editing = null;
+  }
+
+  // ── Editing ────────────────────────────────────────────────────────────
+
+  // Set while the sheet is editing something rather than adding it.
+  let editing = null;
+
+  // Edit reuses the add sheet, so there is one sheet to keep right, not two.
+  // The caller supplies the fields, what Save does, and any other actions.
+  function openEditor(config) {
+    editing = config;
+    $('sheet-title').textContent = config.title;
+    $('sheet-kinds').hidden = true;
+    $('sheet-error').textContent = '';
+    $('sheet-submit').textContent = 'Save';
+    $('sheet-submit').hidden = !config.save;
+    fill($('sheet-fields'), config.fields);
+    renderActions(config.actions || []);
+    $('sheet').hidden = false;
+    const first = $('sheet-fields').querySelector('input, select');
+    if (first) setTimeout(() => first.focus(), 30);
+  }
+
+  // Destructive actions ask twice, in place: the first tap turns the button into
+  // its own confirmation. No dialog, and no stopping a task by brushing it.
+  function renderActions(actions) {
+    fill($('sheet-actions'), actions.map(a => {
+      const b = el('button', 'sheet__action' + (a.danger ? ' is-danger' : ''), a.label);
+      b.type = 'button';
+      let armed = false;
+      b.addEventListener('click', async () => {
+        if (a.confirm && !armed) {
+          armed = true;
+          b.textContent = a.confirm;
+          b.classList.add('is-armed');
+          return;
+        }
+        b.disabled = true;
+        try {
+          await a.run();
+        } catch (err) {
+          b.disabled = false;
+          $('sheet-error').textContent = err.message || 'That did not work.';
+          return;
+        }
+        closeSheet();
+        flash(a.done || 'Done.', 'good');
+        await go(routeFromHash());
+      });
+      return b;
+    }));
+  }
+
+  function hint(text) {
+    return el('p', 'field-hint', text);
+  }
+
+  function editButton(label, onClick) {
+    const b = el('button', 'rowedit', '⋯');
+    b.type = 'button';
+    b.setAttribute('aria-label', label);
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  async function editTask(o) {
+    const who = await data.loadMembers();
+    const people = who.members.map(m => ({ value: m.key, label: m.name }));
+
+    const title = input('text', 'title', { required: 'required' });
+    title.value = o.edit.title;
+    const assignee = select('assignee', people);
+    assignee.value = o.edit.assignee;
+    const time = input('time', 'time', {});
+    time.value = o.edit.time;
+
+    const fields = [
+      field('What', title),
+      hint('A new name applies everywhere this task appears, not only today.'),
+      field('Who', assignee),
+      field('Time', time)
+    ];
+
+    // Who and when can differ day to day; the scope says which days change.
+    if (o.edit.recurs) {
+      fields.push(field('Change who and when', select('scope', [
+        { value: 'this', label: 'Just today' },
+        { value: 'forward', label: 'Today and every day after' }
+      ])));
+    }
+
+    const actions = [];
+    if (o.edit.recurs) {
+      if (!o.completed) {
+        actions.push({
+          label: 'Skip today',
+          confirm: 'Tap again to skip today',
+          run: () => data.skipOccurrence(o.id),
+          done: 'Skipped for today. Any streak is safe.'
+        });
+      }
+      actions.push({
+        label: 'Stop this task',
+        confirm: 'Tap again — it will not come back',
+        danger: true,
+        run: () => data.retireTask(o.id, o.taskId),
+        done: 'Stopped. What was already done stays on record.'
+      });
+    } else if (!o.completed) {
+      // A one-off has no days ahead, so skipping it is removing it.
+      actions.push({
+        label: 'Remove',
+        confirm: 'Tap again to remove',
+        danger: true,
+        run: () => data.skipOccurrence(o.id),
+        done: 'Removed.'
+      });
+    }
+
+    openEditor({
+      title: 'Edit task',
+      fields: fields,
+      actions: actions,
+      saved: 'Saved.',
+      save: async get => {
+        if (!get('title')) throw new Error('Give it a name.');
+        await data.editOccurrence(o.id, {
+          title: get('title'),
+          assignee: get('assignee'),
+          time: get('time') || null,
+          scope: get('scope') || 'this'
+        });
+      }
+    });
   }
 
   async function submitSheet(e) {
@@ -705,6 +852,20 @@
     };
     const err = $('sheet-error');
     err.textContent = '';
+
+    if (editing) {
+      const message = editing.saved || 'Saved.';
+      try {
+        await editing.save(get);
+      } catch (ex) {
+        err.textContent = ex.message || 'That did not work.';
+        return;
+      }
+      closeSheet();
+      flash(message, 'good');
+      await go(routeFromHash());
+      return;
+    }
 
     try {
       if (sheetKind === 'task') {

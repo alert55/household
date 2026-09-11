@@ -635,6 +635,56 @@ select.field {
 .field-hint:empty { display: none; }
 
 .sheet__error { font-size: 12.5px; color: var(--terracotta-ink); margin-top: 10px; min-height: 1em; }
+
+.sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sheet__actions:empty { display: none; }
+
+.sheet__action {
+  width: 100%;
+  padding: 11px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.sheet__action.is-danger { color: var(--terracotta-ink); }
+
+/* The first tap arms it; it says what the second tap will do. */
+.sheet__action.is-armed {
+  background: var(--terracotta);
+  border-color: var(--terracotta);
+  color: #fff;
+}
+
+.sheet__action:disabled { opacity: .55; cursor: default; }
+
+/* Edit, kept apart from the row so a tap on the name still ticks it. */
+.rowedit {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-right: -6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.rowedit:hover { background: var(--bg); color: var(--ink); }
 .sheet form .button { margin-top: 6px; }
 
 /* ── Kitchen ───────────────────────────────────────────── */
