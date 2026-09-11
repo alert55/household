@@ -522,6 +522,38 @@
     return node;
   }
 
+  const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  function ordinal(n) {
+    const tens = n % 100;
+    if (tens >= 11 && tens <= 13) return n + 'th';
+    return n + (['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  }
+
+  // Says in words what a repeat will actually do, so "every month" on the 31st
+  // does not surprise anyone in February. The clamp is the rule in 0003.
+  function repeatHint(repeats, iso) {
+    if (!iso || !repeats || repeats === 'none') return '';
+    const d = new Date(iso + 'T00:00:00Z');
+    if (repeats === 'daily') return 'Every day, starting then.';
+    if (repeats === 'weekly') return 'Every ' + WEEKDAYS[d.getUTCDay()] + '.';
+    const n = d.getUTCDate();
+    return n > 28
+      ? 'On the ' + ordinal(n) + ' of every month — or the last day, in months too short to have one.'
+      : 'On the ' + ordinal(n) + ' of every month.';
+  }
+
+  // A Repeats select and the hint under it, kept in step with a date input.
+  function repeatControls(dateInput, options) {
+    const repeats = select('repeats', options);
+    const hint = el('p', 'field-hint');
+    const sync = () => { hint.textContent = repeatHint(repeats.value, dateInput.value); };
+    repeats.addEventListener('change', sync);
+    dateInput.addEventListener('change', sync);
+    dateInput.addEventListener('input', sync);
+    return { row: field('Repeats', repeats), hint: hint, sync: sync };
+  }
+
   function renderFields() {
     const box = $('sheet-fields');
     const people = roster.members.map(m => ({ value: m.key, label: m.name }));
@@ -558,13 +590,24 @@
       const anyone = [{ value: '', label: 'Everyone' }].concat(people);
       const nobody = [{ value: '', label: 'Nobody' }].concat(people);
 
+      const onDate = input('date', 'onDate', { value: new Date().toISOString().slice(0, 10), required: 'required' });
+      const rep = repeatControls(onDate, [
+        { value: 'none', label: 'Just this once' },
+        { value: 'weekly', label: 'Every week' },
+        { value: 'daily', label: 'Every day' },
+        { value: 'monthly', label: 'Every month' }
+      ]);
+
       fill(box, [
         field('What', input('text', 'title', { placeholder: 'Swim class', required: 'required' })),
         field('Who it is about', select('subject', anyone)),
         field('Who takes them', select('responsible', nobody)),
-        field('Date', input('date', 'onDate', { value: new Date().toISOString().slice(0, 10), required: 'required' })),
-        field('Time', input('time', 'atTime', { value: '17:30', required: 'required' }))
+        field('Date', onDate),
+        field('Time', input('time', 'atTime', { value: '17:30', required: 'required' })),
+        rep.row,
+        rep.hint
       ]);
+      rep.sync();
 
     } else if (sheetKind === 'expense') {
       fill(box, [
@@ -583,11 +626,22 @@
       ]);
 
     } else {
+      const dueOn = input('date', 'dueOn', { value: new Date().toISOString().slice(0, 10), required: 'required' });
+      // Monthly first: that is what almost every household bill is.
+      const rep = repeatControls(dueOn, [
+        { value: 'none', label: 'Just this once' },
+        { value: 'monthly', label: 'Every month' },
+        { value: 'weekly', label: 'Every week' }
+      ]);
+
       fill(box, [
         field('What', input('text', 'label', { placeholder: 'Water bill', required: 'required' })),
         field('How much', input('number', 'amount', { min: '1', step: '1', placeholder: '740', required: 'required' })),
-        field('Due', input('date', 'dueOn', { value: new Date().toISOString().slice(0, 10), required: 'required' }))
+        field('Due', dueOn),
+        rep.row,
+        rep.hint
       ]);
+      rep.sync();
     }
 
     if (sheetKind === 'task' && roster.me.key) {
@@ -671,7 +725,8 @@
           subject: get('subject') || null,
           responsible: get('responsible') || null,
           onDate: get('onDate'),
-          atTime: get('atTime')
+          atTime: get('atTime'),
+          repeats: get('repeats') || 'none'
         });
       } else if (sheetKind === 'expense') {
         const amount = Number(get('amount'));
@@ -686,7 +741,12 @@
         if (!get('label')) throw new Error('Give it a name.');
         if (!(amount > 0)) throw new Error('How much is it?');
         if (!get('dueOn')) throw new Error('When is it due?');
-        await data.createBill({ label: get('label'), amount: amount, dueOn: get('dueOn') });
+        await data.createBill({
+          label: get('label'),
+          amount: amount,
+          dueOn: get('dueOn'),
+          repeats: get('repeats') || 'none'
+        });
       }
     } catch (ex) {
       err.textContent = ex.message || 'That did not work.';

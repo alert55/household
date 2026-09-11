@@ -42,6 +42,37 @@
 
   function isoIn(days) { return addDays(todayIso(), days); }
 
+  // How far ahead generation reaches — the same default as the database.
+  const HORIZON_DAYS = 60;
+
+  // The demo's stand-in for app.recurrence_dates() in migration 0003: same rules,
+  // including the month-end clamp, so demo mode generates the dates the database
+  // would. Only the demo calls this. The live source never generates dates in the
+  // browser — it inserts a series and lets the database do it.
+  function recurrenceDates(freq, byWeekday, byMonthday, startsOn, fromIso, toIso) {
+    const out = [];
+    let d = fromIso > startsOn ? fromIso : startsOn;
+    while (d <= toIso) {
+      const date = new Date(d + 'T00:00:00Z');
+      const lastOfMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+      const hit =
+        freq === 'daily' ? true :
+        freq === 'weekly' ? byWeekday.indexOf(date.getUTCDay()) !== -1 :
+        freq === 'monthly' ? date.getUTCDate() === Math.min(byMonthday, lastOfMonth) :
+        d === startsOn;
+      if (hit) out.push(d);
+      d = addDays(d, 1);
+    }
+    return out;
+  }
+
+  // What a series needs to know about its anchor date: which weekday it falls
+  // on, and which day of the month.
+  function anchor(iso) {
+    const date = new Date(iso + 'T00:00:00Z');
+    return { dow: date.getUTCDay(), dom: date.getUTCDate() };
+  }
+
   // '14:45' from a time input -> 885 minutes, and back to a readable '2:45p'.
   function toMinutes(hhmm) {
     const parts = String(hhmm).split(':');
@@ -60,7 +91,14 @@
     if (iso === today) return 'today';
     if (iso === addDays(today, -1)) return 'yesterday';
     if (iso === addDays(today, 1)) return 'tomorrow';
-    return dayName(iso);
+
+    // A weekday name only picks out one day when it is within the week either
+    // side. Past that, a weekly series reads "Friday, Friday, Friday" and the
+    // 18th is indistinguishable from the 25th — so say the date.
+    const diff = Math.round((Date.parse(iso) - Date.parse(today)) / 86400000);
+    if (Math.abs(diff) < 7) return dayName(iso);
+    return dayName(iso).slice(0, 3) + ' ' + Number(iso.slice(8, 10)) + ' ' +
+      MONTHS[Number(iso.slice(5, 7)) - 1];
   }
 
   function timeLabel(iso) {
@@ -106,9 +144,10 @@
       { id: 'o-plants', title: 'Water the plants', assignee: 'sam', time: null, at: null, points: 0, completed: true },
       { id: 'o-grocery', title: 'Grocery run', assignee: 'jamie', time: null, at: null, points: 0, completed: true }
     ],
+    // Slipped occurrences only. Bills falling due are read from billsDue rather
+    // than listed twice — the two copies used to have to be kept in step by hand.
     needsYou: [
-      { id: 'demo-trash', kind: 'occurrence', title: 'Trash to the curb', assignee: 'alex', slipped: 'slipped yesterday', urgent: true },
-      { id: 'demo-water', kind: 'bill', title: 'Water bill · ฿740', meta: 'Due today', urgent: true }
+      { id: 'demo-trash', kind: 'occurrence', title: 'Trash to the curb', assignee: 'alex', slipped: 'slipped yesterday', urgent: true }
     ],
     // { occurrenceId, from, to, seen }. Seeded with one Sam already sent Alex,
     // so the receiving end is visible at ?as=alex without having to arrange it.
@@ -134,9 +173,11 @@
     events: [
       { id: 'ev-swim', title: 'Swim class', subject: 'alex', responsible: 'sam', date: isoIn(1), at: 1050 }
     ],
+    // Dated, not labelled. The labels used to be written in ("Due Friday"), which
+    // was true on the day they were written and wrong the next morning.
     billsDue: [
-      { id: 'demo-water', label: 'Water bill', amount: 740, dueLabel: 'Due today', urgent: true },
-      { id: 'demo-net', label: 'Internet', amount: 1200, dueLabel: 'Due Friday', urgent: false }
+      { id: 'demo-water', label: 'Water bill', amount: 740, dueOn: isoIn(0) },
+      { id: 'demo-net', label: 'Internet', amount: 1200, dueOn: isoIn(1) }
     ],
     expenses: [
       { id: 'e1', label: 'Market', amount: 700, who: 'Sam', initial: 'S', accent: 'clay', when: 'today' },
@@ -208,15 +249,20 @@
   // act, and whether anyone is waiting on them.
   function demoNeedsYou() {
     const me = demo.me;
-    return demo.needsYou.map(item => {
-      if (item.kind === 'bill') {
-        return {
-          id: item.id, kind: 'bill', title: item.title, meta: item.meta,
-          urgent: item.urgent,
-          action: me.role === 'adult' ? 'Pay' : null
-        };
-      }
+    const today = todayIso();
 
+    const bills = demo.billsDue
+      .filter(b => b.dueOn <= today)
+      .map(b => ({
+        id: b.id,
+        kind: 'bill',
+        title: b.label + ' · ' + money(b.amount, 'THB'),
+        meta: b.dueOn === today ? 'Due today' : 'Due ' + relativeDay(b.dueOn, today),
+        urgent: true,
+        action: me.role === 'adult' ? 'Pay' : null
+      }));
+
+    return demo.needsYou.map(item => {
       const assignee = demo.members[item.assignee];
       const mine = assignee.key === me.key;
       const nudges = demo.nudges.filter(n => n.occurrenceId === item.id);
@@ -239,7 +285,7 @@
         action: (mine || fromMe) ? null : 'Nudge',
         status: fromMe ? (fromMe.seen ? 'Seen' : 'Nudged') : null
       };
-    });
+    }).concat(bills);
   }
 
   const demoSource = {
@@ -286,14 +332,21 @@
     },
 
     async createEvent(input) {
-      demo.events.push({
-        id: 'ev-' + Date.now(),
+      const stamp = Date.now();
+      const repeats = input.repeats && input.repeats !== 'none';
+      const a = anchor(input.onDate);
+      const dates = repeats
+        ? recurrenceDates(input.repeats, [a.dow], a.dom, input.onDate, todayIso(), isoIn(HORIZON_DAYS))
+        : [input.onDate];
+
+      dates.forEach((d, i) => demo.events.push({
+        id: 'ev-' + stamp + '-' + i,
         title: input.title,
         subject: input.subject || null,
         responsible: input.responsible || null,
-        date: input.onDate,
+        date: d,
         at: toMinutes(input.atTime)
-      });
+      }));
       return true;
     },
 
@@ -362,19 +415,16 @@
     },
 
     async createBill(input) {
-      const id = 'b-' + Date.now();
-      demo.billsDue.push({
-        id: id, label: input.label, amount: input.amount,
-        dueLabel: input.dueOn === todayIso() ? 'Due today' : 'Due ' + dayName(input.dueOn),
-        urgent: input.dueOn <= todayIso()
-      });
-      if (input.dueOn <= todayIso()) {
-        demo.needsYou.push({
-          id: id, kind: 'bill',
-          title: input.label + ' · ' + money(input.amount, 'THB'),
-          meta: 'Due today', urgent: true
-        });
-      }
+      const stamp = Date.now();
+      const repeats = input.repeats && input.repeats !== 'none';
+      const a = anchor(input.dueOn);
+      const dates = repeats
+        ? recurrenceDates(input.repeats, [a.dow], a.dom, input.dueOn, todayIso(), isoIn(HORIZON_DAYS))
+        : [input.dueOn];
+
+      dates.forEach((d, i) => demo.billsDue.push({
+        id: 'b-' + stamp + '-' + i, label: input.label, amount: input.amount, dueOn: d
+      }));
       return true;
     },
 
@@ -429,19 +479,31 @@
 
     async loadMoney() {
       const w = demo.week;
+      const today = todayIso();
+      const weekStart = addDays(today, -6);
+
+      // "Due soon" means the coming week, as it does for the live source. A
+      // monthly series generates two months ahead; only the next one belongs here.
+      const soon = demo.billsDue
+        .filter(b => b.dueOn <= addDays(today, 7))
+        .sort((a, b) => a.dueOn.localeCompare(b.dueOn));
+
       return {
-        periodLabel: 'Sep 8 – 14',
+        periodLabel: MONTHS[Number(weekStart.slice(5, 7)) - 1] + ' ' + Number(weekStart.slice(8, 10)) +
+          ' – ' + Number(today.slice(8, 10)),
         budget: {
           spent: money(w.spent, 'THB'),
           ceiling: 'of ' + money(w.ceiling, 'THB'),
           percent: Math.round((w.spent / w.ceiling) * 100),
           left: money(w.ceiling - w.spent, 'THB') + ' left · ' + w.daysLeft + ' days to go'
         },
-        billsDue: demo.billsDue.map(b => ({
-          id: b.id, urgent: b.urgent, dueLabel: b.dueLabel,
+        billsDue: soon.map(b => ({
+          id: b.id,
+          urgent: b.dueOn <= today,
+          dueLabel: b.dueOn === today ? 'Due today' : 'Due ' + relativeDay(b.dueOn, today),
           title: b.label + ' · ' + money(b.amount, 'THB')
         })),
-        billsTotal: money(demo.billsDue.reduce((a, b) => a + b.amount, 0), 'THB'),
+        billsTotal: money(soon.reduce((a, b) => a + b.amount, 0), 'THB'),
         expenses: demo.expenses.map(e => ({
           id: e.id, label: e.label, initial: e.initial, accent: e.accent,
           meta: e.who + ' · ' + e.when, amount: money(e.amount, 'THB')
@@ -461,7 +523,6 @@
       if (demo.me.role !== 'adult') throw new Error('only an adult can pay a bill');
 
       demo.billsDue = demo.billsDue.filter(b => b.id !== id);
-      demo.needsYou = demo.needsYou.filter(n => !(n.kind === 'bill' && n.id === id));
       demo.expenses.unshift({
         id: 'e-' + id, label: bill.label, amount: bill.amount,
         who: demo.me.name, initial: demo.me.initial, accent: demo.me.accent, when: 'today'
@@ -793,6 +854,30 @@
       // The date and time go over as they were typed; the function reads them in
       // the household's timezone. See 0007.
       async createEvent(input) {
+        // A repeating event is a series. The trigger from 0003 generates its
+        // instances out to the horizon, in the household's timezone, so there is
+        // nothing more to do here — and at_time stays a wall-clock time, which is
+        // exactly what a series should hold.
+        if (input.repeats && input.repeats !== 'none') {
+          const c = await context();
+          const a = anchor(input.onDate);
+          const row = {
+            household_id: c.household.id,
+            title: input.title,
+            subject_id: input.subject || null,
+            responsible_id: input.responsible || null,
+            at_time: input.atTime,
+            recurrence_freq: input.repeats,
+            starts_on: input.onDate
+          };
+          if (input.repeats === 'weekly') row.by_weekday = [a.dow];
+          if (input.repeats === 'monthly') row.by_monthday = a.dom;
+
+          const { error } = await sb.from('event_series').insert(row);
+          if (error) throw new Error(error.message);
+          return true;
+        }
+
         const { error } = await sb.rpc('add_event', {
           p_title: input.title,
           p_on_date: input.onDate,
@@ -806,6 +891,27 @@
 
       async createBill(input) {
         const c = await context();
+
+        // Same as events: a repeating bill is a series, and 0003 does the rest.
+        // The amount is snapshotted onto each generated bill, so changing the
+        // series later does not restate bills already issued.
+        if (input.repeats && input.repeats !== 'none') {
+          const a = anchor(input.dueOn);
+          const row = {
+            household_id: c.household.id,
+            label: input.label,
+            amount: input.amount,
+            recurrence_freq: input.repeats,
+            starts_on: input.dueOn
+          };
+          if (input.repeats === 'weekly') row.by_weekday = [a.dow];
+          if (input.repeats === 'monthly') row.by_monthday = a.dom;
+
+          const { error } = await sb.from('bill_series').insert(row);
+          if (error) throw new Error(error.message);
+          return true;
+        }
+
         const { error } = await sb.from('bill').insert({
           household_id: c.household.id,
           label: input.label,

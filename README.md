@@ -102,7 +102,9 @@ Nudge and Pay work, but a nudge only waits for the other person to open the app
 All four screens exist, and the `+` adds tasks, events, expenses, pantry items
 and bills — offering only what the member opening it is allowed to create.
 
+Events and bills can repeat — weekly, daily or monthly — and the database
+generates their instances, so a weekly class is entered once.
+
 What is missing is editing. Anything added can be ticked, paid or marked low,
-but not renamed, reassigned, rescheduled or deleted. Recurring events and bills
-have series tables and no interface, so a weekly class still has to be entered
-one week at a time.
+but not renamed, reassigned, rescheduled or deleted — and that includes a series,
+so a repeating event added by mistake repeats for good.
