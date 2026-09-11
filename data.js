@@ -478,8 +478,11 @@
         ? recurrenceDates(input.repeats, [a.dow], a.dom, input.dueOn, todayIso(), isoIn(HORIZON_DAYS))
         : [input.dueOn];
 
+      // Instances of one series share `series`, so "from now on" and "stop
+      // repeating" can find their siblings — what series_id does in the database.
       dates.forEach((d, i) => demo.billsDue.push({
-        id: 'b-' + stamp + '-' + i, label: input.label, amount: input.amount, dueOn: d
+        id: 'b-' + stamp + '-' + i, label: input.label, amount: input.amount, dueOn: d,
+        series: repeats ? 'bs-' + stamp : null
       }));
       return true;
     },
@@ -557,12 +560,14 @@
           id: b.id,
           urgent: b.dueOn <= today,
           dueLabel: b.dueOn === today ? 'Due today' : 'Due ' + relativeDay(b.dueOn, today),
-          title: b.label + ' · ' + money(b.amount, 'THB')
+          title: b.label + ' · ' + money(b.amount, 'THB'),
+          edit: { label: b.label, amount: b.amount, dueOn: b.dueOn, repeats: Boolean(b.series) }
         })),
         billsTotal: money(soon.reduce((a, b) => a + b.amount, 0), 'THB'),
         expenses: demo.expenses.map(e => ({
           id: e.id, label: e.label, initial: e.initial, accent: e.accent,
-          meta: e.who + ' · ' + e.when, amount: money(e.amount, 'THB')
+          meta: e.who + ' · ' + e.when, amount: money(e.amount, 'THB'),
+          edit: { label: e.label, amount: e.amount, paidBill: e.paidBill ? e.paidBill.label : null }
         }))
       };
     },
@@ -581,9 +586,71 @@
       demo.billsDue = demo.billsDue.filter(b => b.id !== id);
       demo.expenses.unshift({
         id: 'e-' + id, label: bill.label, amount: bill.amount,
-        who: demo.me.name, initial: demo.me.initial, accent: demo.me.accent, when: 'today'
+        who: demo.me.name, initial: demo.me.initial, accent: demo.me.accent, when: 'today',
+        // Kept so deleting the expense can un-pay the bill, as the trigger in
+        // 0008 does.
+        paidBill: bill
       });
       demo.week.spent += bill.amount;
+      return true;
+    },
+
+    async editBill(id, input) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can change a bill');
+      const bill = demo.billsDue.find(b => b.id === id);
+      if (!bill) throw new Error('no such bill');
+
+      if (input.scope === 'forward' && bill.series) {
+        // Every unpaid one in the series from this one on. Dates stay where the
+        // series put them; only the name and amount move.
+        demo.billsDue
+          .filter(b => b.series === bill.series && b.dueOn >= bill.dueOn && !b.edited)
+          .forEach(b => { b.label = input.label; b.amount = input.amount; });
+      } else {
+        bill.label = input.label;
+        bill.amount = input.amount;
+        bill.dueOn = input.dueOn || bill.dueOn;
+        if (bill.series) bill.edited = true;
+      }
+      return true;
+    },
+
+    async removeBill(id) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can remove a bill');
+      if (!demo.billsDue.some(b => b.id === id)) throw new Error('no such bill');
+      demo.billsDue = demo.billsDue.filter(b => b.id !== id);
+      return true;
+    },
+
+    // Mirrors the database: future unpaid instances go, today's stays, and any
+    // someone edited are left alone.
+    async stopBillSeries(billId) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can stop a bill');
+      const bill = demo.billsDue.find(b => b.id === billId);
+      if (!bill || !bill.series) throw new Error('that bill does not repeat');
+      const today = todayIso();
+      demo.billsDue = demo.billsDue.filter(b =>
+        !(b.series === bill.series && b.dueOn > today && !b.edited));
+      return true;
+    },
+
+    async editExpense(id, input) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can change an expense');
+      const e = demo.expenses.find(x => x.id === id);
+      if (!e) throw new Error('no such expense');
+      demo.week.spent += input.amount - e.amount;
+      e.label = input.label;
+      e.amount = input.amount;
+      return true;
+    },
+
+    async deleteExpense(id) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can remove an expense');
+      const e = demo.expenses.find(x => x.id === id);
+      if (!e) throw new Error('no such expense');
+      demo.expenses = demo.expenses.filter(x => x.id !== id);
+      demo.week.spent -= e.amount;
+      if (e.paidBill) demo.billsDue.push(e.paidBill);
       return true;
     },
 
@@ -1059,7 +1126,7 @@
         const [budget, bills, expenses] = await Promise.all([
           sb.from('budget').select('amount').eq('household_id', c.household.id).eq('period', 'weekly').lte('effective_from', today).order('effective_from', { ascending: false }).limit(1),
           sb.from('bill').select('*').eq('household_id', c.household.id).is('paid_at', null).is('skipped_at', null).lte('due_on', addDays(today, 7)).order('due_on'),
-          sb.from('expense').select('*').eq('household_id', c.household.id).gte('spent_on', weekStart).order('spent_on', { ascending: false })
+          sb.from('expense').select('*, bill(label)').eq('household_id', c.household.id).gte('spent_on', weekStart).order('spent_on', { ascending: false })
         ]);
 
         const rows = expenses.data || [];
@@ -1080,18 +1147,24 @@
             id: b.id,
             urgent: b.due_on <= today,
             title: b.label + ' · ' + money(b.amount, cur),
-            dueLabel: b.due_on === today ? 'Due today' : 'Due ' + relativeDay(b.due_on, today)
+            dueLabel: b.due_on === today ? 'Due today' : 'Due ' + relativeDay(b.due_on, today),
+            seriesId: b.series_id,
+            edit: { label: b.label, amount: Number(b.amount), dueOn: b.due_on, repeats: Boolean(b.series_id) }
           })),
           billsTotal: money(dueRows.reduce((a, b) => a + Number(b.amount), 0), cur),
           expenses: rows.map(e => {
             const who = byId(c.members, e.spent_by);
+            // bill.expense_id is unique, so PostgREST may hand back one row or
+            // a list of one depending on how it reads the relationship.
+            const paid = Array.isArray(e.bill) ? e.bill[0] : e.bill;
             return {
               id: e.id,
               label: e.label,
               initial: initial(who),
               accent: who ? who.accent : 'sage',
               meta: [who ? who.display_name : 'Someone', relativeDay(e.spent_on, today)].join(' · '),
-              amount: money(e.amount, cur)
+              amount: money(e.amount, cur),
+              edit: { label: e.label, amount: Number(e.amount), paidBill: paid ? paid.label : null }
             };
           })
         };
@@ -1141,6 +1214,63 @@
       // about who and how often that the client should not be trusted with.
       async payBill(id) {
         const { error } = await sb.rpc('pay_bill', { target_bill: id });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      // Bills and expenses have no column privileges in the way, so these are
+      // ordinary writes under bill_admin and expense_amend (ADR 0005).
+      async editBill(id, input, meta) {
+        const c = await context();
+        if (input.scope === 'forward' && meta && meta.seriesId) {
+          // The series first: its trigger regenerates the untouched bills ahead
+          // with the new name and amount. Then this one, which may be today's
+          // and so not regenerated. Its date belongs to the series; not moved.
+          const { error: se } = await sb.from('bill_series')
+            .update({ label: input.label, amount: input.amount })
+            .eq('id', meta.seriesId);
+          if (se) throw new Error(se.message);
+
+          const { error } = await sb.from('bill')
+            .update({ label: input.label, amount: input.amount })
+            .eq('id', id);
+          if (error) throw new Error(error.message);
+          return true;
+        }
+
+        const row = { label: input.label, amount: input.amount, due_on: input.dueOn };
+        // Marked, so the next change to its series leaves this one's amount be.
+        if (meta && meta.seriesId) row.edited_at = new Date().toISOString();
+
+        const { error } = await sb.from('bill').update(row).eq('id', id).eq('household_id', c.household.id);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async removeBill(id) {
+        const { error } = await sb.rpc('remove_bill', { p_bill: id });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async stopBillSeries(billId, meta) {
+        if (!meta || !meta.seriesId) throw new Error('that bill does not repeat');
+        const { error } = await sb.from('bill_series').update({ active: false }).eq('id', meta.seriesId);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async editExpense(id, input) {
+        const { error } = await sb.from('expense')
+          .update({ label: input.label, amount: input.amount })
+          .eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      // Deleting an expense that paid a bill un-pays the bill (trigger, 0008).
+      async deleteExpense(id) {
+        const { error } = await sb.from('expense').delete().eq('id', id);
         if (error) throw new Error(error.message);
         return true;
       },

@@ -109,5 +109,10 @@ generates their instances, so a weekly class is entered once.
 
 Tasks can be edited by an adult — renamed, reassigned or retimed for just today
 or from now on, skipped for a day, or stopped. Stopping retires a task rather than
-deleting it, so the streaks and points it already produced survive. Events,
-bills, expenses and pantry items cannot be edited yet.
+deleting it, so the streaks and points it already produced survive.
+
+Bills can be edited one at a time or from here on, skipped, or stopped repeating;
+this month's bill can cost more than usual without the next change to its series
+putting the old amount back. Expenses can be edited or deleted, and deleting the
+one that paid a bill marks that bill unpaid again — which is how a mistaken
+payment is undone. Events and pantry items cannot be edited yet.

@@ -423,7 +423,8 @@
   // ── Rendering: money ───────────────────────────────────────────────────
 
   async function refreshMoney() {
-    const m = await data.loadMoney();
+    const [m, roster] = await Promise.all([data.loadMoney(), data.loadMembers()]);
+    const isAdult = roster.me.role === 'adult';
 
     $('money-period').textContent = m.periodLabel;
     $('budget-spent').textContent = m.budget.spent;
@@ -462,6 +463,7 @@
           }
         });
         row.appendChild(pay);
+        if (isAdult) row.appendChild(editButton('Edit ' + b.title, () => editBill(b)));
         return row;
       }));
     }
@@ -479,6 +481,7 @@
       li.appendChild(body);
 
       li.appendChild(el('span', 'entry__amount', e.amount));
+      if (isAdult) li.appendChild(editButton('Edit ' + e.label, () => editExpense(e)));
       return li;
     }));
   }
@@ -839,6 +842,109 @@
           time: get('time') || null,
           scope: get('scope') || 'this'
         });
+      }
+    });
+  }
+
+  function editBill(b) {
+    const label = input('text', 'label', { required: 'required' });
+    label.value = b.edit.label;
+    const amount = input('number', 'amount', { min: '1', step: '1', required: 'required' });
+    amount.value = String(b.edit.amount);
+    const dueOn = input('date', 'dueOn', { required: 'required' });
+    dueOn.value = b.edit.dueOn;
+
+    const fields = [field('What', label), field('How much', amount), field('Due', dueOn)];
+    const actions = [];
+
+    if (b.edit.repeats) {
+      const scope = select('scope', [
+        { value: 'this', label: 'Just this one' },
+        { value: 'forward', label: 'This one and every one after' }
+      ]);
+      const note = hint('');
+      // A series keeps its own day; only this one bill can be moved.
+      const sync = () => {
+        const forward = scope.value === 'forward';
+        dueOn.disabled = forward;
+        note.textContent = forward
+          ? 'The date stays with the series. Only the name and amount change from here on.'
+          : 'Only this bill changes — the series will leave it as you set it.';
+      };
+      scope.addEventListener('change', sync);
+      fields.push(field('Change', scope), note);
+      setTimeout(sync, 0);
+
+      actions.push({
+        label: 'Skip this one',
+        confirm: 'Tap again — nothing is owed this time',
+        run: () => data.removeBill(b.id),
+        done: 'Skipped.'
+      });
+      actions.push({
+        label: 'Stop repeating',
+        confirm: 'Tap again — no more of these will come',
+        danger: true,
+        run: () => data.stopBillSeries(b.id, { seriesId: b.seriesId }),
+        done: 'It will not repeat. This one is still here.'
+      });
+    } else {
+      actions.push({
+        label: 'Remove bill',
+        confirm: 'Tap again to remove',
+        danger: true,
+        run: () => data.removeBill(b.id),
+        done: 'Removed.'
+      });
+    }
+
+    openEditor({
+      title: 'Edit bill',
+      fields: fields,
+      actions: actions,
+      saved: 'Saved.',
+      save: async get => {
+        const value = Number(get('amount'));
+        if (!get('label')) throw new Error('Give it a name.');
+        if (!(value > 0)) throw new Error('How much is it?');
+        await data.editBill(b.id, {
+          label: get('label'),
+          amount: value,
+          // A disabled input is left out of a form, so read it directly.
+          dueOn: dueOn.value,
+          scope: get('scope') || 'this'
+        }, { seriesId: b.seriesId });
+      }
+    });
+  }
+
+  function editExpense(e) {
+    const label = input('text', 'label', { required: 'required' });
+    label.value = e.edit.label;
+    const amount = input('number', 'amount', { min: '1', step: '1', required: 'required' });
+    amount.value = String(e.edit.amount);
+
+    const fields = [field('What', label), field('How much', amount)];
+    if (e.edit.paidBill) {
+      fields.push(hint('This is what paid the ' + e.edit.paidBill + '. Deleting it marks that bill unpaid again.'));
+    }
+
+    openEditor({
+      title: 'Edit expense',
+      fields: fields,
+      saved: 'Saved.',
+      actions: [{
+        label: 'Delete expense',
+        confirm: e.edit.paidBill ? 'Tap again — the bill will be unpaid' : 'Tap again to delete',
+        danger: true,
+        run: () => data.deleteExpense(e.id),
+        done: e.edit.paidBill ? 'Deleted. The ' + e.edit.paidBill + ' is unpaid again.' : 'Deleted.'
+      }],
+      save: async get => {
+        const value = Number(get('amount'));
+        if (!get('label')) throw new Error('Give it a name.');
+        if (!(value > 0)) throw new Error('How much was it?');
+        await data.editExpense(e.id, { label: get('label'), amount: value });
       }
     });
   }

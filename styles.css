@@ -685,6 +685,11 @@ select.field {
 }
 
 .rowedit:hover { background: var(--bg); color: var(--ink); }
+
+.card--dark .rowedit { color: var(--dark-muted); margin-left: 2px; }
+.card--dark .rowedit:hover { background: rgba(255, 255, 255, .1); color: var(--dark-ink); }
+
+.field:disabled { opacity: .55; }
 .sheet form .button { margin-top: 6px; }
 
 /* ── Kitchen ───────────────────────────────────────────── */
