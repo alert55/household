@@ -82,6 +82,8 @@ Decisions that were genuinely contested live in [docs/adr](./docs/adr):
   one page, not separate documents
 - [0004](./docs/adr/0004-supabase-for-storage-auth-and-sync.md) — Supabase for
   storage, auth and sync
+- [0005](./docs/adr/0005-occurrence-writes-go-through-column-grants.md) —
+  occurrence writes go through column grants and checked functions
 
 The glossary is turned into tables in
 [supabase/migrations](./supabase/migrations). Row-level security is enabled on

@@ -36,6 +36,11 @@ A single dated instance of a task. The thing actually ticked, the thing that
 slips, and the unit a streak counts.
 _Avoid_: instance, entry, todo, assignment
 
+**Retired**:
+A task or series that no longer comes back. Nothing it already produced is
+removed — the occurrences, and the streaks and points they carry, stay on record.
+_Avoid_: deleted, archived, removed, stopped
+
 **Recurrence**:
 The rule describing how often something comes back, and therefore which
 instances of it exist. Tasks, and the series behind repeating events and bills,
@@ -51,6 +56,12 @@ _Avoid_: owner, doer, responsible party
 An occurrence whose moment passed without it being done. Describes the
 occurrence, never the member.
 _Avoid_: missed, overdue, late, failed
+
+**Skipped**:
+An occurrence, event or bill deliberately passed over — a day off, a class that
+is not on, a month nothing is owed. A decision rather than a lapse: a skipped
+occurrence never slips and breaks no streak. Only an adult can skip.
+_Avoid_: deleted, removed, cancelled, excused
 
 **Nudge**:
 A reminder one member sends another about an occurrence they have let slip. At

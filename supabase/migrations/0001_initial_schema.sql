@@ -252,10 +252,15 @@ create table redemption (
 
 -- ── Derived reads ────────────────────────────────────────────────────────
 
+-- Every view here is security_invoker. Without it a view runs as its owner and
+-- reads the tables beneath it straight past row-level security — and because
+-- these sit in `public`, the API would serve every household's rows to anyone.
+-- The first draft of this file omitted it; see 0008.
+
 -- Slipped, computed rather than stored. The due moment is the occurrence's own
 -- date and time read in the household's timezone; with no time, it is the end
 -- of that day.
-create view occurrence_current as
+create view occurrence_current with (security_invoker = true) as
 select
   o.*,
   coalesce(o.assignee_id, t.default_assignee_id) as effective_assignee_id,
@@ -276,7 +281,7 @@ join household h on h.id = o.household_id;
 -- The runs are built over each task's own occurrence sequence, NOT over
 -- calendar dates. That matters: a weekdays-only task has a two-day gap every
 -- weekend, and counting calendar days would break the streak every Friday.
-create view streak_run as
+create view streak_run with (security_invoker = true) as
 with seq as (
   select
     o.task_id,
@@ -308,7 +313,7 @@ from grouped
 group by household_id, task_id, member_id, run_id;
 
 -- The run still alive: the most recent one, provided nothing has slipped since.
-create view streak_current as
+create view streak_current with (security_invoker = true) as
 select distinct on (r.task_id, r.member_id) r.*
 from streak_run r
 where not exists (

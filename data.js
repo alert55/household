@@ -603,14 +603,14 @@
         const today = todayIn(tz);
 
         const [openToday, slipped, bills, streaks, low, spend, budget, ev, nudges] = await Promise.all([
-          sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today),
+          sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today).eq('skipped', false),
           sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('slipped', true).lt('due_on', today).order('due_on'),
-          sb.from('bill').select('*').eq('household_id', c.household.id).is('paid_at', null).lte('due_on', today).order('due_on'),
+          sb.from('bill').select('*').eq('household_id', c.household.id).is('paid_at', null).is('skipped_at', null).lte('due_on', today).order('due_on'),
           sb.from('streak_current').select('*').eq('household_id', c.household.id).order('length', { ascending: false }).limit(1),
           sb.from('pantry_item').select('name').eq('household_id', c.household.id).eq('is_low', true),
           sb.from('expense').select('amount').eq('household_id', c.household.id).gte('spent_on', addDays(today, -6)),
           sb.from('budget').select('amount').eq('household_id', c.household.id).eq('period', 'weekly').lte('effective_from', today).order('effective_from', { ascending: false }).limit(1),
-          sb.from('event').select('*').eq('household_id', c.household.id).gte('starts_at', new Date().toISOString()).order('starts_at').limit(1),
+          sb.from('event').select('*').eq('household_id', c.household.id).is('skipped_at', null).gte('starts_at', new Date().toISOString()).order('starts_at').limit(1),
           sb.from('nudge').select('occurrence_id, from_member_id, to_member_id, seen_at').eq('household_id', c.household.id).gte('nudged_on', addDays(today, -30))
         ]);
 
@@ -724,10 +724,10 @@
         const today = todayIn(c.household.timezone);
 
         const [todayRes, slippedRes, streakRes, eventRes] = await Promise.all([
-          sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today),
+          sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today).eq('skipped', false),
           sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('slipped', true).lt('due_on', today).order('due_on'),
           sb.from('streak_current').select('*').eq('household_id', c.household.id),
-          sb.from('event').select('*').eq('household_id', c.household.id).gte('starts_at', new Date().toISOString()).order('starts_at').limit(5)
+          sb.from('event').select('*').eq('household_id', c.household.id).is('skipped_at', null).gte('starts_at', new Date().toISOString()).order('starts_at').limit(5)
         ]);
 
         const rows = todayRes.data || [];
@@ -992,7 +992,7 @@
 
         const [budget, bills, expenses] = await Promise.all([
           sb.from('budget').select('amount').eq('household_id', c.household.id).eq('period', 'weekly').lte('effective_from', today).order('effective_from', { ascending: false }).limit(1),
-          sb.from('bill').select('*').eq('household_id', c.household.id).is('paid_at', null).lte('due_on', addDays(today, 7)).order('due_on'),
+          sb.from('bill').select('*').eq('household_id', c.household.id).is('paid_at', null).is('skipped_at', null).lte('due_on', addDays(today, 7)).order('due_on'),
           sb.from('expense').select('*').eq('household_id', c.household.id).gte('spent_on', weekStart).order('spent_on', { ascending: false })
         ]);
 
@@ -1031,20 +1031,15 @@
         };
       },
 
-      async setOccurrenceDone(id, done, occurrence) {
-        const c = await context();
-        // The trigger in 0001 rejects points for anyone but a child, so award
-        // them only when the person completing it is one.
-        const earner = occurrence && occurrence.assignee ? byId(c.members, occurrence.assignee) : c.me;
-        const points = done && earner && earner.role === 'child' ? (occurrence.points || 0) : 0;
-
+      // Only completed_at is sent — it is the only column a member may write
+      // (0008). Who ticked it and what it earned are worked out by the
+      // database, so a browser cannot award points it was never offered.
+      async setOccurrenceDone(id, done) {
         const { error } = await sb.from('occurrence').update({
-          completed_at: done ? new Date().toISOString() : null,
-          completed_by: done ? (earner ? earner.id : c.me.id) : null,
-          points_awarded: points
+          completed_at: done ? new Date().toISOString() : null
         }).eq('id', id);
 
-        if (error) throw error;
+        if (error) throw new Error(error.message);
         return true;
       },
 
