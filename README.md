@@ -115,4 +115,8 @@ Bills can be edited one at a time or from here on, skipped, or stopped repeating
 this month's bill can cost more than usual without the next change to its series
 putting the old amount back. Expenses can be edited or deleted, and deleting the
 one that paid a bill marks that bill unpaid again — which is how a mistaken
-payment is undone. Events and pantry items cannot be edited yet.
+payment is undone.
+
+Events work the same way: one of a series can be moved on its own and stays
+moved when the series later changes, or the series can change from here on;
+one can be skipped, or the series stopped. Pantry items cannot be edited yet.

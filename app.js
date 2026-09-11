@@ -314,6 +314,7 @@
         li.appendChild(body);
 
         li.appendChild(el('span', 'eventrow__when', e.when));
+        if (isAdult) li.appendChild(editButton('Edit ' + e.title, () => editEvent(e)));
         return li;
       }));
     }
@@ -914,6 +915,91 @@
           dueOn: dueOn.value,
           scope: get('scope') || 'this'
         }, { seriesId: b.seriesId });
+      }
+    });
+  }
+
+  async function editEvent(ev) {
+    const roster = await data.loadMembers();
+    const people = roster.members.map(m => ({ value: m.key, label: m.name }));
+
+    const title = input('text', 'title', { required: 'required' });
+    title.value = ev.edit.title;
+    const subject = select('subject', [{ value: '', label: 'Everyone' }].concat(people));
+    subject.value = ev.edit.subject;
+    const responsible = select('responsible', [{ value: '', label: 'Nobody' }].concat(people));
+    responsible.value = ev.edit.responsible;
+    const onDate = input('date', 'onDate', { required: 'required' });
+    onDate.value = ev.edit.date;
+    const atTime = input('time', 'atTime', { required: 'required' });
+    atTime.value = ev.edit.time;
+
+    const fields = [
+      field('What', title),
+      field('Who it is about', subject),
+      field('Who takes them', responsible),
+      field('Date', onDate),
+      field('Time', atTime)
+    ];
+    const actions = [];
+
+    if (ev.edit.repeats) {
+      const scope = select('scope', [
+        { value: 'this', label: 'Just this one' },
+        { value: 'forward', label: 'This one and every one after' }
+      ]);
+      const note = hint('');
+      const sync = () => {
+        const forward = scope.value === 'forward';
+        onDate.disabled = forward;
+        note.textContent = forward
+          ? 'The day stays with the series. The time and the people change from here on.'
+          : 'Only this one changes — the series will leave it as you set it.';
+      };
+      scope.addEventListener('change', sync);
+      fields.push(field('Change', scope), note);
+      setTimeout(sync, 0);
+
+      actions.push({
+        label: 'Skip this one',
+        confirm: 'Tap again — it is not on this time',
+        run: () => data.removeEvent(ev.id),
+        done: 'Skipped.'
+      });
+      actions.push({
+        label: 'Stop repeating',
+        confirm: 'Tap again — no more of these will come',
+        danger: true,
+        run: () => data.stopEventSeries(ev.id, { seriesId: ev.seriesId }),
+        done: 'It will not repeat.'
+      });
+    } else {
+      actions.push({
+        label: 'Remove event',
+        confirm: 'Tap again to remove',
+        danger: true,
+        run: () => data.removeEvent(ev.id),
+        done: 'Removed.'
+      });
+    }
+
+    openEditor({
+      title: 'Edit event',
+      fields: fields,
+      actions: actions,
+      saved: 'Saved.',
+      save: async get => {
+        if (!get('title')) throw new Error('Give it a name.');
+        if (!atTime.value) throw new Error('What time?');
+        await data.editEvent(ev.id, {
+          title: get('title'),
+          subject: get('subject') || null,
+          responsible: get('responsible') || null,
+          // Disabled inputs drop out of a form; read the date directly.
+          onDate: onDate.value,
+          atTime: atTime.value,
+          scope: get('scope') || 'this'
+        }, { seriesId: ev.seriesId });
       }
     });
   }

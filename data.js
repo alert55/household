@@ -21,13 +21,18 @@
     return symbol + Math.round(amount).toLocaleString('en-US');
   }
 
+  // The calendar date an instant falls on in a given timezone, as YYYY-MM-DD
+  // (the en-CA format happens to be exactly that).
+  function dateIn(instant, timezone) {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date(instant));
+  }
+
   // The household's date, not the browser's and not the server's. Whether an
   // occurrence has slipped depends entirely on which day it belongs to.
   function todayIn(timezone) {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'
-    }).format(new Date());
-    return parts; // YYYY-MM-DD
+    return dateIn(new Date(), timezone);
   }
 
   function addDays(iso, n) {
@@ -107,14 +112,31 @@
       MONTHS[Number(iso.slice(5, 7)) - 1];
   }
 
-  function timeLabel(iso) {
-    if (!iso) return '';
+  // The wall-clock hour and minute of an instant, read in a given timezone.
+  // Without the zone this was the browser's clock — so a phone abroad showed a
+  // 5:30pm swim class at whatever 5:30pm Bangkok is where the phone happened to be.
+  function clockIn(iso, tz) {
     const d = new Date(iso);
-    let h = d.getHours();
-    const m = d.getMinutes();
-    const suffix = h >= 12 ? 'p' : 'a';
-    h = h % 12 || 12;
-    return h + (m ? ':' + String(m).padStart(2, '0') : ':00') + suffix;
+    if (!tz) return { h: d.getHours(), m: d.getMinutes() };
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(d);
+    const part = type => Number(parts.find(p => p.type === type).value);
+    // Some engines render midnight as 24.
+    return { h: part('hour') % 24, m: part('minute') };
+  }
+
+  function timeLabel(iso, tz) {
+    if (!iso) return '';
+    const t = clockIn(iso, tz);
+    const suffix = t.h >= 12 ? 'p' : 'a';
+    return (t.h % 12 || 12) + ':' + String(t.m).padStart(2, '0') + suffix;
+  }
+
+  // What a time input wants back: '17:30'.
+  function hhmmIn(iso, tz) {
+    const t = clockIn(iso, tz);
+    return String(t.h).padStart(2, '0') + ':' + String(t.m).padStart(2, '0');
   }
 
   // ── Demo source ────────────────────────────────────────────────────────
@@ -221,7 +243,7 @@
   function demoEvents() {
     const today = todayIso();
     return demo.events
-      .filter(e => e.date >= today)
+      .filter(e => e.date >= today && !e.skipped)
       .sort((a, b) => (a.date === b.date ? a.at - b.at : a.date.localeCompare(b.date)))
       .map(e => {
         const subject = demo.members[e.subject];
@@ -234,7 +256,16 @@
           when: relativeDay(e.date, today),
           title: [subject ? subject.name : null, e.title].filter(Boolean).join(' · '),
           meta: [fromMinutes(e.at), responsible ? responsible.name + ' takes them' : null]
-            .filter(Boolean).join(' · ')
+            .filter(Boolean).join(' · '),
+          seriesId: e.series || null,
+          edit: {
+            title: e.title,
+            subject: e.subject || '',
+            responsible: e.responsible || '',
+            date: e.date,
+            time: toHHMM(e.at),
+            repeats: Boolean(e.series)
+          }
         };
       });
   }
@@ -357,8 +388,55 @@
         subject: input.subject || null,
         responsible: input.responsible || null,
         date: d,
-        at: toMinutes(input.atTime)
+        at: toMinutes(input.atTime),
+        series: repeats ? 'es-' + stamp : null
       }));
+      return true;
+    },
+
+    async editEvent(id, input) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can change an event');
+      const e = demo.events.find(x => x.id === id);
+      if (!e) throw new Error('no such event');
+
+      const apply = x => {
+        x.title = input.title;
+        x.subject = input.subject || null;
+        x.responsible = input.responsible || null;
+        x.at = toMinutes(input.atTime);
+      };
+
+      if (input.scope === 'forward' && e.series) {
+        // This one and every later one not edited by hand. Dates stay with the
+        // series; the time and people move.
+        demo.events
+          .filter(x => x.series === e.series && x.date >= e.date && (!x.edited || x.id === id))
+          .forEach(apply);
+      } else {
+        apply(e);
+        e.date = input.onDate || e.date;
+        if (e.series) e.edited = true;
+      }
+      return true;
+    },
+
+    async removeEvent(id) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can remove an event');
+      const e = demo.events.find(x => x.id === id);
+      if (!e) throw new Error('no such event');
+      // As in the database: a one-off goes, an instance of a series is skipped.
+      if (e.series) e.skipped = true;
+      else demo.events = demo.events.filter(x => x.id !== id);
+      return true;
+    },
+
+    async stopEventSeries(id) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can stop an event');
+      const e = demo.events.find(x => x.id === id);
+      if (!e || !e.series) throw new Error('that event does not repeat');
+      const today = todayIso();
+      demo.events = demo.events.filter(x =>
+        !(x.series === e.series && x.date > today && !x.edited && !x.skipped));
       return true;
     },
 
@@ -812,7 +890,7 @@
             occurrences: shown.map(o => ({
               id: o.id,
               title: o.title,
-              meta: [initialName(c, o.effective_assignee_id), o.due_time ? timeLabel(o.due_at) : null].filter(Boolean).join(' · '),
+              meta: [initialName(c, o.effective_assignee_id), o.due_time ? timeLabel(o.due_at, c.household.timezone) : null].filter(Boolean).join(' · '),
               completed: Boolean(o.completed_at),
               points: o.points_on_offer,
               assignee: o.effective_assignee_id
@@ -837,7 +915,7 @@
             dow: dayName(event.occurs_on || event.starts_at.slice(0, 10)).slice(0, 3),
             day: Number((event.occurs_on || event.starts_at.slice(0, 10)).slice(8, 10)),
             title: event.title,
-            meta: [timeLabel(event.starts_at), initialName(c, event.responsible_id)].filter(Boolean).join(' · ')
+            meta: [timeLabel(event.starts_at, c.household.timezone), initialName(c, event.responsible_id)].filter(Boolean).join(' · ')
           } : null
         };
       },
@@ -883,7 +961,7 @@
             occurrences: mine.map(o => ({
               id: o.id,
               title: o.title,
-              time: o.due_time ? timeLabel(o.due_at) : null,
+              time: o.due_time ? timeLabel(o.due_at, c.household.timezone) : null,
               points: m.role === 'child' ? (o.points_on_offer || 0) : 0,
               completed: Boolean(o.completed_at),
               assignee: o.effective_assignee_id,
@@ -919,9 +997,19 @@
               day: Number(on.slice(8, 10)),
               when: relativeDay(on, today),
               title: [initialName(c, e.subject_id), e.title].filter(Boolean).join(' · '),
-              meta: [timeLabel(e.starts_at),
+              meta: [timeLabel(e.starts_at, c.household.timezone),
                 e.responsible_id ? initialName(c, e.responsible_id) + ' takes them' : null]
-                .filter(Boolean).join(' · ')
+                .filter(Boolean).join(' · '),
+              seriesId: e.series_id,
+              edit: {
+                title: e.title,
+                subject: e.subject_id || '',
+                responsible: e.responsible_id || '',
+                // The household's date and clock, not the browser's.
+                date: dateIn(e.starts_at, c.household.timezone),
+                time: hhmmIn(e.starts_at, c.household.timezone),
+                repeats: Boolean(e.series_id)
+              }
             };
           })
         };
@@ -1243,6 +1331,52 @@
         if (meta && meta.seriesId) row.edited_at = new Date().toISOString();
 
         const { error } = await sb.from('bill').update(row).eq('id', id).eq('household_id', c.household.id);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async editEvent(id, input, meta) {
+        const params = {
+          p_event: id,
+          p_title: input.title,
+          p_on_date: input.onDate,
+          p_at_time: input.atTime,
+          p_subject: input.subject || null,
+          p_responsible: input.responsible || null
+        };
+
+        if (input.scope === 'forward' && meta && meta.seriesId) {
+          // This one first, which marks it edited — so the series change below,
+          // whose trigger regenerates the untouched events ahead, leaves it be.
+          // The other order would have regenerated this very event out from
+          // under the second call.
+          const { error: ee } = await sb.rpc('edit_event', params);
+          if (ee) throw new Error(ee.message);
+
+          const { error } = await sb.from('event_series').update({
+            title: input.title,
+            subject_id: input.subject || null,
+            responsible_id: input.responsible || null,
+            at_time: input.atTime
+          }).eq('id', meta.seriesId);
+          if (error) throw new Error(error.message);
+          return true;
+        }
+
+        const { error } = await sb.rpc('edit_event', params);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async removeEvent(id) {
+        const { error } = await sb.rpc('remove_event', { p_event: id });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async stopEventSeries(id, meta) {
+        if (!meta || !meta.seriesId) throw new Error('that event does not repeat');
+        const { error } = await sb.from('event_series').update({ active: false }).eq('id', meta.seriesId);
         if (error) throw new Error(error.message);
         return true;
       },
