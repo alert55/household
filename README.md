@@ -119,4 +119,6 @@ payment is undone.
 
 Events work the same way: one of a series can be moved on its own and stays
 moved when the series later changes, or the series can change from here on;
-one can be skipped, or the series stopped. Pantry items cannot be edited yet.
+one can be skipped, or the series stopped. Pantry items can be renamed, marked
+low or not, or deleted by any member — the pantry is shared — and deleting one
+leaves it on any shopping list it is already on.

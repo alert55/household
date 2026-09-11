@@ -335,7 +335,7 @@
     if (k.low.length) {
       $('low-card-h').textContent = 'Running low · ' + k.low.length;
       fill($('low-list'), k.low.map(item => {
-        const li = el('li');
+        const li = el('li', 'pillrow');
         const pill = el('button', 'pill', item.name);
         pill.type = 'button';
         pill.title = 'Put back in stock';
@@ -344,6 +344,8 @@
           await refreshKitchen();
         }));
         li.appendChild(pill);
+        // Beside the pill, not on it: tapping the pill already means "got it".
+        li.appendChild(editButton('Edit ' + item.name, () => editPantry(item, true)));
         return li;
       }));
     }
@@ -397,8 +399,47 @@
         await refreshKitchen();
       }));
       li.appendChild(mark);
+      li.appendChild(editButton('Edit ' + item.name, () => editPantry(item, false)));
       return li;
     }));
+  }
+
+  // Shown to every member: the pantry_touch policy lets anyone in the household
+  // change the pantry, and this follows that rule rather than inventing a
+  // stricter one here.
+  function editPantry(item, isLow) {
+    const name = input('text', 'name', { required: 'required' });
+    name.value = item.name;
+    const low = select('low', [
+      { value: 'no', label: 'No, it is stocked' },
+      { value: 'yes', label: 'Yes, running low' }
+    ]);
+    low.value = isLow ? 'yes' : 'no';
+
+    openEditor({
+      title: 'Edit pantry item',
+      fields: [
+        field('What', name),
+        field('Running low', low),
+        hint('Deleting it keeps it on any shopping list it is already on.')
+      ],
+      saved: 'Saved.',
+      actions: [{
+        label: 'Delete from pantry',
+        confirm: 'Tap again to delete',
+        danger: true,
+        run: () => data.deletePantryItem(item.id),
+        done: 'Deleted.'
+      }],
+      save: async get => {
+        if (!get('name')) throw new Error('Give it a name.');
+        await data.editPantryItem(item.id, {
+          name: get('name'),
+          low: get('low') === 'yes',
+          wasLow: isLow
+        });
+      }
+    });
   }
 
   // Disables a control while its write is in flight, and puts the message on

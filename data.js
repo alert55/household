@@ -614,6 +614,29 @@
       return restocked;
     },
 
+    // Any member, as the pantry_touch policy allows — the pantry is shared.
+    async editPantryItem(id, input) {
+      const p = demo.pantryItems.find(x => x.id === id);
+      if (!p) throw new Error('no such item');
+      const clash = demo.pantryItems.some(x =>
+        x.id !== id && x.name.toLowerCase() === input.name.toLowerCase());
+      if (clash) throw new Error('that is already in the pantry');
+      p.name = input.name;
+      p.low = Boolean(input.low);
+      return true;
+    },
+
+    // A deleted item that was on the shopping list stays there as plain text,
+    // as the foreign key's "on delete set null" leaves it in the database.
+    async deletePantryItem(id) {
+      if (!demo.pantryItems.some(x => x.id === id)) throw new Error('no such item');
+      demo.pantryItems = demo.pantryItems.filter(x => x.id !== id);
+      if (demo.list) {
+        demo.list.items.forEach(i => { if (i.pantryItemId === id) i.pantryItemId = null; });
+      }
+      return true;
+    },
+
     async loadMoney() {
       const w = demo.week;
       const today = todayIso();
@@ -1187,6 +1210,29 @@
 
       async setListItemGot(id, got) {
         const { error } = await sb.from('shopping_list_item').update({ got: got }).eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      // Plain writes under pantry_touch, which any member holds.
+      async editPantryItem(id, input) {
+        const row = { name: input.name };
+        // Only a change of state touches marked_low_at; a rename leaves the
+        // record of when it ran low alone.
+        if (Boolean(input.low) !== Boolean(input.wasLow)) {
+          row.is_low = Boolean(input.low);
+          row.marked_low_at = input.low ? new Date().toISOString() : null;
+        }
+        const { error } = await sb.from('pantry_item').update(row).eq('id', id);
+        // The unique (household_id, name) constraint says it better than 23505.
+        if (error) throw new Error(error.code === '23505' ? 'that is already in the pantry' : error.message);
+        return true;
+      },
+
+      // A list entry pointing at it keeps its label: the foreign key nulls the
+      // link rather than deleting the line from somebody's shopping list.
+      async deletePantryItem(id) {
+        const { error } = await sb.from('pantry_item').delete().eq('id', id);
         if (error) throw new Error(error.message);
         return true;
       },
