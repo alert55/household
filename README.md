@@ -45,10 +45,10 @@ about the trash, so Alex sees "Sam nudged you" and no buttons at all — a child
 may not pay bills — while Sam sees a "Nudged" tag where the button was. Demo
 state lives only for the page load, so the "Seen" tag needs a real backend.
 
-To go live, create a Supabase project, apply the migrations in
-`supabase/migrations`, and fill in the URL and anon key. The anon key belongs in
-public client code — security rests on the row-level security policies, not on
-that key being secret (ADR 0004).
+To go live, follow [supabase/SETUP.md](./supabase/SETUP.md): create the project,
+apply the migrations, sign in once, and run `supabase/seed.sql` to put your
+account in a household. The anon key belongs in public client code — security
+rests on the row-level security policies, not on that key being secret (ADR 0004).
 
 No build step and no dependencies. Fonts (Newsreader, IBM Plex Sans) come from
 Google Fonts; everything else is inline SVG.

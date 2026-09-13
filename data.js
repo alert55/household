@@ -786,12 +786,20 @@
       const { data: auth } = await sb.auth.getUser();
       if (!auth || !auth.user) throw new Error('not signed in');
 
+      // maybeSingle, not single: no row is the expected state on first sign-in,
+      // before seed.sql has put this account in a household, and it deserves a
+      // sentence rather than PostgREST's "JSON object requested, multiple (or no)
+      // rows returned".
       const { data: me, error } = await sb
         .from('member')
         .select('id, display_name, role, accent, household_id, household:household_id (id, name, timezone, currency)')
         .eq('user_id', auth.user.id)
-        .single();
-      if (error) throw error;
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!me) {
+        throw new Error('you are signed in as ' + auth.user.email +
+          ', but not in a household yet. Run supabase/seed.sql with that address, then reload.');
+      }
 
       const { data: members } = await sb
         .from('member')
@@ -814,8 +822,14 @@
       },
 
       async signIn(email) {
-        const { error } = await sb.auth.signInWithOtp({ email: email });
-        if (error) throw error;
+        // Back to this page, not to the project's default Site URL. Supabase
+        // only honours it if the address is in the project's redirect list —
+        // see supabase/SETUP.md.
+        const { error } = await sb.auth.signInWithOtp({
+          email: email,
+          options: { emailRedirectTo: location.origin + location.pathname }
+        });
+        if (error) throw new Error(error.message);
       },
 
       async signOut() { ctx = null; await sb.auth.signOut(); },

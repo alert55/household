@@ -12,6 +12,13 @@ create extension if not exists "pgcrypto";
 
 create schema if not exists app;
 
+-- Row-level security policies are evaluated as the user running the query, and
+-- every policy below calls a function in `app`. A new schema is usable only by
+-- its owner, so without this grant every query from the app fails with
+-- "permission denied for schema app". Usage is not exposure: the API serves
+-- only the schemas it is configured for, and `app` is not one of them.
+grant usage on schema app to anon, authenticated;
+
 -- ── Types ────────────────────────────────────────────────────────────────
 
 create type member_role as enum ('adult', 'child');
