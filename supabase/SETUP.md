@@ -8,8 +8,16 @@ time, so if a menu name below differs slightly, look for the nearest match.
 
 Sign in at [supabase.com](https://supabase.com) and create a new project.
 
+- **Plan:** Free.
 - **Region:** Southeast Asia (Singapore) is the nearest to Bangkok.
 - **Database password:** keep it somewhere safe. None of the steps below need it.
+- **Security:**
+  - *Enable Data API* — **on**. The app talks to it.
+  - *Automatically expose new tables* — **off**, as Supabase recommends.
+    Migration `0010` grants exactly what the app needs instead, and gives
+    visitors who are not signed in nothing at all.
+  - *Enable automatic RLS* — **on**. The migrations enable it on every table
+    already; this catches any table added later that forgets to.
 
 ## 2. Turn on pg_cron — before the migrations
 
@@ -21,7 +29,11 @@ Migration `0002` schedules the hourly job that keeps occurrences generated (ADR
 ## 3. Apply the migrations, one at a time, in order
 
 **SQL Editor → New query.** Paste `migrations/0001_initial_schema.sql`, run it.
-Then `0002`, `0003`, and so on up to `0009`.
+Then `0002`, `0003`, and so on up to `0010`.
+
+Do not skip `0010`. With automatic exposure off, the tables are unreachable
+until it grants access, and every query from the app fails with
+"permission denied for table".
 
 One file per run, so that if one fails you know which. **If a file fails, stop
 there** — do not run the next one. Copy the error; later files build on earlier
@@ -105,6 +117,7 @@ One row, `materialise-occurrences`, `20 * * * *`, active.
   message.
 - **"permission denied for schema app".** `0001` did not finish; its grant on
   the `app` schema is what every policy relies on.
+- **"permission denied for table …".** `0010` has not been run.
 
 ## Adding the second adult
 
