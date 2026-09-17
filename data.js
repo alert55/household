@@ -948,11 +948,16 @@
             spent: money(spent, cur),
             percent: ceiling ? Math.round((spent / ceiling) * 100) : 0
           },
+          // Worded exactly as Coming up words it on the Tasks screen: who it is
+          // about in the title, who takes them in the meta. The same event read
+          // two ways on two screens is a bug, however small.
           nextEvent: event ? {
             dow: dayName(event.occurs_on || event.starts_at.slice(0, 10)).slice(0, 3),
             day: Number((event.occurs_on || event.starts_at.slice(0, 10)).slice(8, 10)),
-            title: event.title,
-            meta: [timeLabel(event.starts_at, c.household.timezone), initialName(c, event.responsible_id)].filter(Boolean).join(' · ')
+            title: [initialName(c, event.subject_id), event.title].filter(Boolean).join(' · '),
+            meta: [timeLabel(event.starts_at, c.household.timezone),
+              event.responsible_id ? initialName(c, event.responsible_id) + ' takes them' : null]
+              .filter(Boolean).join(' · ')
           } : null
         };
       },
