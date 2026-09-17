@@ -93,10 +93,16 @@ hardening step for later.
 
 ## Where this could go next
 
-The schema and its materialisation job exist but have never been applied to a
-real database — treat everything under `supabase/` as unrun code until it has
-met a live Postgres. The Supabase source in `data.js` is unrun for the same
-reason; only the demo path has been exercised.
+It runs. All ten migrations are applied to a live Supabase project and the app
+reads and writes real rows: inserting a task materialised its occurrences, the
+monthly bill and weekly class generated their instances, and ticking a child's
+chore as an adult recorded the adult as the one who ticked it while awarding the
+points to the child — the database deciding, not the browser (ADR 0005). With
+only the publishable key and no account, every table and view answers
+"permission denied".
+
+Two things are still unexercised against the live project: nudges, and the
+hourly job that extends the horizon, which has not yet had to add a day.
 
 Nudge and Pay work, but a nudge only waits for the other person to open the app
 — push to their device is not something ADR 0004 gives us for free.
