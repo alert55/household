@@ -101,8 +101,12 @@ points to the child — the database deciding, not the browser (ADR 0005). With
 only the publishable key and no account, every table and view answers
 "permission denied".
 
-Two things are still unexercised against the live project: nudges, and the
-hourly job that extends the horizon, which has not yet had to add a day.
+The hourly job runs unattended: fifteen consecutive successes over its first day,
+each extending the horizon, with no duplicates — the unique key on
+(task_id, due_on) doing the work ADR 0002 asked of it.
+
+Nudges are the one path still unexercised against the live project, since that
+needs two people signed in.
 
 Nudge and Pay work, but a nudge only waits for the other person to open the app
 — push to their device is not something ADR 0004 gives us for free.
