@@ -49,7 +49,9 @@ their first real test.
 **Authentication → URL Configuration**
 
 - **Site URL:** `http://localhost:8792`
-- **Redirect URLs:** add `http://localhost:8792`
+- **Redirect URLs:** add `http://localhost:8792` and `http://localhost:8792/**`.
+  The app asks to come back to `http://localhost:8792/` — trailing slash — and
+  without the wildcard entry that is not an exact match.
 
 Use `localhost`, not `127.0.0.1`. They are different origins to a browser, and a
 magic link sent back to the one that is not on this list is refused.
