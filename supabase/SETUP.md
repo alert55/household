@@ -76,11 +76,17 @@ The publishable key is designed to be public, so committing `config.js` is safe
 
 ## 6. Serve the app and sign in once
 
-In `household-app/`:
+Name the folder with `--directory`, so the command works whichever folder the
+terminal is in:
 
 ```bash
-python -m http.server 8792 --bind 127.0.0.1
+python -m http.server 8792 --bind 127.0.0.1 --directory path/to/household-app
 ```
+
+If the page shows "Directory listing for /" instead of the app, the server is
+serving whatever folder the terminal was in — often your home folder, dotfiles
+and all. Stop it with Ctrl+C and run the line above. Keep `--bind 127.0.0.1`: it
+is what keeps the rest of the network from seeing it.
 
 Open `http://localhost:8792`, enter your email, open the link it sends.
 
