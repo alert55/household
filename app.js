@@ -1211,9 +1211,28 @@
     status.textContent = 'Sending…';
     try {
       await data.signIn(email);
-      status.textContent = 'Check your email for the link.';
+      $('code-form').hidden = false;
+      $('signin-code').focus();
+      status.textContent = 'Sent to ' + email + '. Type the code here, or tap the link in the email.';
     } catch (err) {
       status.textContent = err.message || 'That did not work.';
+    }
+  });
+
+  $('code-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const status = $('signin-status');
+    const email = $('signin-email').value.trim();
+    const code = $('signin-code').value.replace(/\s/g, '');
+    if (!email || !code) return;
+    status.textContent = 'Checking…';
+    try {
+      await data.verifyCode(email, code);
+      signedIn = true;
+      status.textContent = '';
+      await enter();
+    } catch (err) {
+      status.textContent = err.message || 'That code did not work.';
     }
   });
 
@@ -1234,12 +1253,15 @@
     }
 
     if (!signedIn) return showSignIn();
+    await enter();
+  })();
 
+  async function enter() {
     $('tabbar').hidden = false;
     if (!data.isLive) {
       baseMessage = 'Demo data — nothing is saved. Add your project to config.js to go live.';
       banner(baseMessage);
     }
     await go(routeFromHash());
-  })();
+  }
 })();

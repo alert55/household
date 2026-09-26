@@ -832,6 +832,14 @@
         if (error) throw new Error(error.message);
       },
 
+      // The same email carries a code. Typing it signs in whichever browser
+      // the app is open in — including a home-screen app, which the link
+      // cannot reach.
+      async verifyCode(email, code) {
+        const { error } = await sb.auth.verifyOtp({ email: email, token: code, type: 'email' });
+        if (error) throw new Error(error.message);
+      },
+
       async signOut() { ctx = null; await sb.auth.signOut(); },
 
       async loadBoard() {

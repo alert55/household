@@ -2,11 +2,21 @@
 
 A home screen for tracking a household — chores, bills, groceries and who owes what.
 
-Currently one screen, built to match the `Home-B-Board` variant of the
-"Household tracking mobile app" project in Claude Design. Every value on it is
-hardcoded; this is a faithful rendering of a single state, not a working app yet.
+Four screens — Home, Tasks, Kitchen and Money — built from the `Home-B-Board`
+design in Claude Design, reading and writing a live Supabase project.
 
-## Running it
+## Using it
+
+It is published at **https://alert55.github.io/household/**, straight from
+`main` by GitHub Pages — every push is live a minute later. On a phone, open
+that address and add it to the home screen (Safari: Share → Add to Home Screen;
+Chrome: ⋮ → Add to Home screen). It then opens full-screen, like an app.
+
+Sign in with your email. The email carries a code and a link: type the code.
+The link only works in the browser that opens it, and on an iPhone that is
+Safari, not the home-screen app.
+
+## Running it locally
 
 On a new machine — a Mac included — nothing needs installing beyond Git and
 Python 3, which macOS offers to install the first time either is used:
@@ -36,6 +46,7 @@ To work on the SQL, the checks in [tools/](./tools) need `uv`
 | `config.js` | Which project to talk to. Empty means demo mode. |
 | `data.js` | One shape, two sources: in-memory demo rows, and the real Supabase queries. |
 | `app.js` | Routing, rendering and the tick. |
+| `manifest.json`, `icons/` | What makes it installable to a home screen. The icons are drawn by `tools/make_icons.py`. |
 
 No build step and no dependencies of our own. Fonts come from Google Fonts and
 the Supabase client from a CDN; everything else is inline SVG.

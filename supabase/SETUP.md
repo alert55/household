@@ -116,11 +116,46 @@ select jobname, schedule, active from cron.job;
 
 One row, `materialise-occurrences`, `20 * * * *`, active.
 
+## 9. Put it online
+
+So the household can use it from their phones, not just from the computer
+serving it.
+
+**Publish.** On GitHub, the repository's **Settings → Pages**: source *Deploy
+from a branch*, branch `main`, folder `/ (root)`. The app appears at
+`https://<user>.github.io/<repository>/` a minute later, and every push to
+`main` updates it. There is no build step, so nothing else is needed.
+
+**Let sign-in return there.** Back in Supabase, **Authentication → URL
+Configuration**:
+
+- **Site URL:** the published address, e.g. `https://alert55.github.io/household/`.
+- **Redirect URLs:** add that address, and the same with `**` on the end. Keep
+  the two `localhost` entries, so running it locally still works.
+
+**Put the code in the email.** **Authentication → Emails**. Two templates are
+used: *Magic Link* for someone who has signed in before, *Confirm signup* for
+their first time. In both, replace the body with:
+
+```html
+<h2>Sign in to Household</h2>
+<p>Your code is <strong>{{ .Token }}</strong></p>
+<p>Or <a href="{{ .ConfirmationURL }}">sign in with this link</a> in a browser.</p>
+```
+
+The code is what makes a home-screen app work on an iPhone. A home-screen app
+keeps its own sign-in, separate from Safari's, and a link in an email always
+opens Safari — so the link signs in Safari and the app stays signed out. A code
+typed into the app signs in the app itself.
+
 ## If something goes wrong
 
 - **The sign-in email never arrives.** Supabase's built-in email is rate-limited
   to a handful an hour. Wait, and check spam, before trying again.
-- **The link opens a page that is not the app.** Step 4 — the redirect list.
+- **The email has a link but no code.** Step 9 — both templates need
+  `{{ .Token }}`.
+- **The link opens a page that is not the app.** Step 4, or step 9 for the
+  published address — the redirect list.
 - **A migration fails.** Stop, and bring back the file name and the full error
   message.
 - **"permission denied for schema app".** `0001` did not finish; its grant on
