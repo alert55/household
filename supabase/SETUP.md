@@ -133,9 +133,26 @@ Configuration**:
 - **Redirect URLs:** add that address, and the same with `**` on the end. Keep
   the two `localhost` entries, so running it locally still works.
 
-**Put the code in the email.** **Authentication → Emails**. Two templates are
-used: *Magic Link* for someone who has signed in before, *Confirm signup* for
-their first time. In both, replace the body with:
+**Send email through Gmail.** Supabase only lets a project edit its email
+templates once it sends through its own mail server, and the built-in one
+manages a handful of emails an hour anyway. A Gmail account will do for one
+household:
+
+1. With 2-Step Verification on, create an app password at
+   <https://myaccount.google.com/apppasswords>. Google shows 16 letters, once.
+2. **Authentication → Emails → SMTP Settings**, turn on *Enable custom SMTP*:
+   sender email and username both the Gmail address, sender name `Household`,
+   host `smtp.gmail.com`, port `465`, password the app password. Save.
+
+Chrome may autofill a saved login into the username and password boxes. Clear
+both before typing — Supabase would otherwise try to send with it. Supabase
+also warns that Gmail is meant for personal mail; for a few sign-ins a day
+that does not matter.
+
+**Put the code in the email.** **Authentication → Emails → Templates**. Two
+are used: *Magic link or OTP* for someone who has signed in before, *Confirm
+sign up* for their first time. In both, set the subject to `Your Household
+sign-in code` and replace the body with:
 
 ```html
 <h2>Sign in to Household</h2>
@@ -151,7 +168,10 @@ typed into the app signs in the app itself.
 ## If something goes wrong
 
 - **The sign-in email never arrives.** Supabase's built-in email is rate-limited
-  to a handful an hour. Wait, and check spam, before trying again.
+  to a handful an hour. Wait, and check spam, before trying again. Once step 9
+  sends through Gmail, the limit is 30 an hour and one a minute per person; if
+  nothing arrives at all, **Logs → Auth** shows whether Gmail refused the app
+  password.
 - **The email has a link but no code.** Step 9 — both templates need
   `{{ .Token }}`.
 - **The link opens a page that is not the app.** Step 4, or step 9 for the
