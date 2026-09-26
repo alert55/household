@@ -105,6 +105,8 @@ Decisions that were genuinely contested live in [docs/adr](./docs/adr):
   storage, auth and sync
 - [0005](./docs/adr/0005-occurrence-writes-go-through-column-grants.md) —
   occurrence writes go through column grants and checked functions
+- [0006](./docs/adr/0006-invites-are-claimed-by-email.md) — invites are
+  claimed by email address
 
 The glossary is turned into tables in
 [supabase/migrations](./supabase/migrations). Row-level security is enabled on
@@ -114,7 +116,7 @@ hardening step for later.
 
 ## Where this could go next
 
-It runs. All ten migrations are applied to a live Supabase project and the app
+It runs. All eleven migrations are applied to a live Supabase project and the app
 reads and writes real rows: inserting a task materialised its occurrences, the
 monthly bill and weekly class generated their instances, and ticking a child's
 chore as an adult recorded the adult as the one who ticked it while awarding the
@@ -127,7 +129,9 @@ each extending the horizon, with no duplicates — the unique key on
 (task_id, due_on) doing the work ADR 0002 asked of it.
 
 Nudges are the one path still unexercised against the live project, since that
-needs two people signed in.
+needs two people signed in — which invites now make possible without SQL: an
+adult invites someone from the Household sheet (your initial on Home), and
+their first sign-in with that address makes them that member (ADR 0006).
 
 Nudge and Pay work, but a nudge only waits for the other person to open the app
 — push to their device is not something ADR 0004 gives us for free.

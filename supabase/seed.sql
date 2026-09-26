@@ -83,12 +83,8 @@ begin
 end
 $$;
 
--- ── Later: letting the second adult sign in ─────────────────────────────
+-- ── Later: everyone else ─────────────────────────────────────────────────
 --
--- Once they have signed in to the app once, link their account to the member
--- that was made for them above:
---
---   update member
---      set user_id = (select id from auth.users where lower(email) = lower('them@example.com'))
---    where display_name = 'Sam'
---      and user_id is null;
+-- Invite them from the app: tap your initial on Home, then Invite beside their
+-- name. Their first sign-in with that address makes them that member (0011,
+-- ADR 0006). There is no SQL step any more.

@@ -24,6 +24,11 @@ _Avoid_: parent, owner, admin
 A member who earns points and builds streaks. The only role rewards apply to.
 _Avoid_: kid, dependent, minor
 
+**Invite**:
+The email address an adult names for a member who has no login yet. The first
+sign-in from that address becomes that member; the invite is then spent.
+_Avoid_: invitation link, join code, request
+
 ### Work
 
 **Task**:

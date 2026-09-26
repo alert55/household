@@ -799,7 +799,7 @@
     $('sheet-title').textContent = config.title;
     $('sheet-kinds').hidden = true;
     $('sheet-error').textContent = '';
-    $('sheet-submit').textContent = 'Save';
+    $('sheet-submit').textContent = config.submitLabel || 'Save';
     $('sheet-submit').hidden = !config.save;
     fill($('sheet-fields'), config.fields);
     renderActions(config.actions || []);
@@ -823,15 +823,20 @@
           return;
         }
         b.disabled = true;
+        let result;
         try {
-          await a.run();
+          result = await a.run();
         } catch (err) {
           b.disabled = false;
           $('sheet-error').textContent = err.message || 'That did not work.';
           return;
         }
+        // An action that opens the next sheet itself leaves this one to it.
+        if (a.keepOpen) return;
         closeSheet();
-        flash(a.done || 'Done.', 'good');
+        // A run may word its own outcome, or return false for "nothing
+        // happened" — a share sheet dismissed, say.
+        if (result !== false) flash(typeof result === 'string' ? result : (a.done || 'Done.'), 'good');
         await go(routeFromHash());
       });
       return b;
@@ -1121,8 +1126,10 @@
 
     if (editing) {
       const message = editing.saved || 'Saved.';
+      const after = editing.after;
+      let result;
       try {
-        await editing.save(get);
+        result = await editing.save(get);
       } catch (ex) {
         err.textContent = ex.message || 'That did not work.';
         return;
@@ -1130,6 +1137,8 @@
       closeSheet();
       flash(message, 'good');
       await go(routeFromHash());
+      // Some saves lead straight on to another sheet: an invite to its Share.
+      if (after) await after(result);
       return;
     }
 
@@ -1184,6 +1193,151 @@
     flash('Added.', 'good');
     await go(routeFromHash());
   }
+
+  // ── Household: who is in it, and inviting them ─────────────────────────
+
+  // Opened from your initial on Home. Everyone sees who is in the household;
+  // only an adult invites or adds anyone (0011 refuses a child either way).
+  async function openHousehold() {
+    let who;
+    try {
+      who = await data.loadMembers();
+    } catch (err) {
+      flash('Could not load the household — ' + (err.message || 'try again'), 'bad');
+      return;
+    }
+    const isAdult = who.me.role === 'adult';
+
+    const list = el('ul', 'members');
+    who.members.forEach(m => {
+      const li = el('li', 'member-row');
+      const avatar = el('span', 'avatar avatar--sm avatar--' + m.accent, m.initial);
+      avatar.setAttribute('aria-hidden', 'true');
+      li.appendChild(avatar);
+
+      const text = el('div', 'member-row__text');
+      text.appendChild(el('p', 'member-row__name', m.name));
+      const role = m.role === 'adult' ? 'Adult' : 'Child';
+      const status = m.key === who.me.key ? 'you'
+        : m.signsIn ? 'signs in'
+        : m.invite ? 'invited as ' + m.invite
+        : 'no login yet';
+      text.appendChild(el('p', 'member-row__meta', role + ' · ' + status));
+      li.appendChild(text);
+
+      if (isAdult && !m.signsIn) {
+        const b = el('button', 'chip chip--quiet chip--light', m.invite ? 'Invited' : 'Invite');
+        b.type = 'button';
+        b.addEventListener('click', () => openInvite(m));
+        li.appendChild(b);
+      }
+      list.appendChild(li);
+    });
+
+    const actions = [];
+    if (isAdult) actions.push({ label: 'Add someone', keepOpen: true, run: () => openAddMember() });
+    if (data.isLive) {
+      actions.push({
+        label: 'Sign out',
+        confirm: 'Tap again to sign out',
+        run: async () => { await data.signOut(); signedIn = false; },
+        done: 'Signed out.'
+      });
+    }
+
+    openEditor({
+      title: 'Household',
+      fields: [list, hint(isAdult
+        ? 'Invite someone and they sign in with that address; the first time they do, they become that person here.'
+        : 'An adult can invite someone to sign in.')],
+      actions: actions
+    });
+  }
+
+  // The address the page is served from, so an invite made on a laptop at
+  // localhost still points at wherever this copy of the app lives.
+  const appUrl = () => location.origin + location.pathname;
+
+  function openInvite(m) {
+    const email = input('email', 'email', { placeholder: 'name@example.com', autocomplete: 'off', required: 'required' });
+    email.value = m.invite || '';
+
+    const actions = [];
+    if (m.invite) {
+      actions.push({ label: 'Send the invite', run: () => shareInvite(m.name, m.invite) });
+      actions.push({
+        label: 'Cancel invite',
+        danger: true,
+        confirm: 'Tap again to cancel the invite',
+        run: () => data.inviteMember(m.key, ''),
+        done: 'Invite cancelled.'
+      });
+    }
+
+    openEditor({
+      title: 'Invite ' + m.name,
+      fields: [
+        field('Email ' + m.name + ' will sign in with', email),
+        hint('They open ' + appUrl() + ' and sign in with this address. The first time they do, they become ' + m.name + ' here — their chores, points and streaks included.')
+      ],
+      actions: actions,
+      submitLabel: m.invite ? 'Save' : 'Invite',
+      saved: 'Invited. Now send them the link.',
+      save: async get => {
+        if (!get('email')) throw new Error('What address will they sign in with?');
+        await data.inviteMember(m.key, get('email'));
+        return get('email').toLowerCase();
+      },
+      // Straight back to this member, now with Send the invite on offer.
+      after: addr => openInvite(Object.assign({}, m, { invite: addr }))
+    });
+  }
+
+  function openAddMember() {
+    const email = input('email', 'email', { placeholder: 'Optional', autocomplete: 'off' });
+    openEditor({
+      title: 'Add someone',
+      fields: [
+        field('Name', input('text', 'name', { placeholder: 'Grandma', required: 'required' })),
+        field('Adult or child', select('role', [
+          { value: 'adult', label: 'Adult — assigns chores, pays bills' },
+          { value: 'child', label: 'Child — earns points and streaks' }
+        ])),
+        field('Email', email),
+        hint('Leave it empty for someone who will not sign in, like a young child. You can invite them later.')
+      ],
+      submitLabel: 'Add',
+      saved: 'Added.',
+      save: async get => {
+        if (!get('name')) throw new Error('What are they called?');
+        const key = await data.addMember({ name: get('name'), role: get('role'), email: get('email') });
+        return { key: key, name: get('name'), invite: get('email').toLowerCase() || null };
+      },
+      // Invited in the same step: go straight to sending it.
+      after: added => (added.invite ? openInvite(added) : openHousehold())
+    });
+  }
+
+  // The phone's own share sheet — LINE, Messages, whatever the household uses.
+  // The app sends no email itself. Where there is no share sheet (most
+  // desktops) the message is copied instead.
+  async function shareInvite(name, addr) {
+    const text = 'You are invited to our household. Open ' + appUrl() +
+      ' and sign in with ' + addr + ' — you will be ' + name + ' there.';
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Household', text: text });
+        return 'Invite sent.';
+      } catch (err) {
+        if (err && err.name === 'AbortError') return false;
+        throw err;
+      }
+    }
+    await navigator.clipboard.writeText(text);
+    return 'Copied. Paste it into a message to them.';
+  }
+
+  $('me-avatar').addEventListener('click', openHousehold);
 
   document.querySelector('.fab').addEventListener('click', openSheet);
   $('sheet-close').addEventListener('click', closeSheet);

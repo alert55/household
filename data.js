@@ -536,11 +536,36 @@
       return true;
     },
 
+    // Whoever the demo is being viewed as signs in; nobody else does yet.
     async loadMembers() {
       return {
         me: demo.me,
-        members: Object.keys(demo.members).map(k => demo.members[k])
+        members: Object.keys(demo.members).map(k => Object.assign({}, demo.members[k], {
+          signsIn: k === demo.me.key,
+          invite: demo.members[k].invite || null
+        }))
       };
+    },
+
+    async inviteMember(key, email) {
+      const addr = String(email || '').trim().toLowerCase();
+      if (addr && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) throw new Error('that does not look like an email address');
+      if (addr && Object.keys(demo.members).some(k => k !== key && demo.members[k].invite === addr)) {
+        throw new Error('that address is already invited');
+      }
+      demo.members[key].invite = addr || null;
+      return true;
+    },
+
+    async addMember(input) {
+      const name = String(input.name || '').trim();
+      if (!name) throw new Error('give them a name');
+      const used = c => Object.keys(demo.members).filter(k => demo.members[k].accent === c).length;
+      const accent = ['sage', 'clay', 'gold'].sort((a, b) => used(a) - used(b))[0];
+      const key = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+      demo.members[key] = { key: key, name: name, initial: name.charAt(0).toUpperCase(), accent: accent, role: input.role };
+      if (input.email) await this.inviteMember(key, input.email);
+      return key;
     },
 
     async createTask(input) {
@@ -818,20 +843,31 @@
       // before seed.sql has put this account in a household, and it deserves a
       // sentence rather than PostgREST's "JSON object requested, multiple (or no)
       // rows returned".
-      const { data: me, error } = await sb
+      const findMe = () => sb
         .from('member')
         .select('id, display_name, role, accent, household_id, household:household_id (id, name, timezone, currency)')
         .eq('user_id', auth.user.id)
         .maybeSingle();
+
+      let { data: me, error } = await findMe();
       if (error) throw new Error(error.message);
+
+      // No household yet: if an adult invited this address, signing in is what
+      // links it to that member (0011). Otherwise there is nothing to show.
+      if (!me) {
+        const { data: joined, error: claimError } = await sb.rpc('claim_invite');
+        if (claimError) throw new Error(claimError.message);
+        if (joined) ({ data: me, error } = await findMe());
+        if (error) throw new Error(error.message);
+      }
       if (!me) {
         throw new Error('you are signed in as ' + auth.user.email +
-          ', but not in a household yet. Run supabase/seed.sql with that address, then reload.');
+          ', which is not in a household yet. Ask an adult to invite that address from the Household sheet — their initial, top right of Home — then reload.');
       }
 
       const { data: members } = await sb
         .from('member')
-        .select('id, display_name, role, accent')
+        .select('id, display_name, role, accent, user_id, invite_email')
         .eq('household_id', me.household_id);
 
       ctx = { me: me, household: me.household, members: members || [] };
@@ -1097,14 +1133,35 @@
         };
       },
 
+      // `signsIn` and `invite` are for the Household sheet: whether a member
+      // has a login yet, and if not, which address they were invited under.
       async loadMembers() {
         const c = await context();
         return {
           me: { key: c.me.id, name: c.me.display_name, initial: initial(c.me), accent: c.me.accent, role: c.me.role },
           members: c.members.map(m => ({
-            key: m.id, name: m.display_name, initial: initial(m), accent: m.accent, role: m.role
+            key: m.id, name: m.display_name, initial: initial(m), accent: m.accent, role: m.role,
+            signsIn: Boolean(m.user_id), invite: m.invite_email || null
           }))
         };
+      },
+
+      // Both change the member list, so the cached context is dropped and the
+      // next read fetches it again.
+      async inviteMember(key, email) {
+        const { error } = await sb.rpc('invite_member', { target_member: key, email: email || '' });
+        ctx = null;
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async addMember(input) {
+        const { data: id, error } = await sb.rpc('add_member', {
+          member_name: input.name, member_role: input.role, email: input.email || null
+        });
+        ctx = null;
+        if (error) throw new Error(error.message);
+        return id;
       },
 
       // Inserting the task is enough: the trigger from 0002 materialises its

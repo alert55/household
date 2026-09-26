@@ -29,7 +29,7 @@ Migration `0002` schedules the hourly job that keeps occurrences generated (ADR
 ## 3. Apply the migrations, one at a time, in order
 
 **SQL Editor → New query.** Paste `migrations/0001_initial_schema.sql`, run it.
-Then `0002`, `0003`, and so on up to `0010`.
+Then `0002`, `0003`, and so on up to `0011`.
 
 Do not skip `0010`. With automatic exposure off, the tables are unreachable
 until it grants access, and every query from the app fails with
@@ -182,7 +182,10 @@ typed into the app signs in the app itself.
   the `app` schema is what every policy relies on.
 - **"permission denied for table …".** `0010` has not been run.
 
-## Adding the second adult
+## Adding everyone else
 
-They sign in to the app once, then run the snippet at the bottom of `seed.sql`
-with their address.
+From the app, not the SQL editor. On Home, tap your initial (top right): the
+Household sheet lists everyone. **Invite** beside a member names the address
+they will sign in with, and **Send the invite** passes them the link through
+the phone's share sheet. Their first sign-in with that address makes them that
+member (ADR 0006). **Add someone** adds a person who is not there yet.
