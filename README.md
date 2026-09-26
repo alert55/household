@@ -2,7 +2,7 @@
 
 A home screen for tracking a household — chores, bills, groceries and who owes what.
 
-Four screens — Home, Tasks, Kitchen and Money — built from the `Home-B-Board`
+Home, Tasks, Kitchen, Money and Rewards, built from the `Home-B-Board`
 design in Claude Design, reading and writing a live Supabase project.
 
 ## Using it
@@ -107,6 +107,8 @@ Decisions that were genuinely contested live in [docs/adr](./docs/adr):
   occurrence writes go through column grants and checked functions
 - [0006](./docs/adr/0006-invites-are-claimed-by-email.md) — invites are
   claimed by email address
+- [0007](./docs/adr/0007-rewards-are-asked-for-and-points-held.md) — rewards
+  are asked for, and the points are held until an adult decides
 
 The glossary is turned into tables in
 [supabase/migrations](./supabase/migrations). Row-level security is enabled on
@@ -116,7 +118,7 @@ hardening step for later.
 
 ## Where this could go next
 
-It runs. All eleven migrations are applied to a live Supabase project and the app
+It runs. All twelve migrations are applied to a live Supabase project and the app
 reads and writes real rows: inserting a task materialised its occurrences, the
 monthly bill and weekly class generated their instances, and ticking a child's
 chore as an adult recorded the adult as the one who ticked it while awarding the
@@ -157,3 +159,9 @@ moved when the series later changes, or the series can change from here on;
 one can be skipped, or the series stopped. Pantry items can be renamed, marked
 low or not, or deleted by any member — the pantry is shared — and deleting one
 leaves it on any shopping list it is already on.
+
+Rewards (0012, ADR 0007): a child's points add up to a balance they can spend,
+and streak rewards come round again every so many days in a row. A child asks,
+an adult approves or declines from Home or the Rewards screen, or gives one
+outright. Rewards has no tab of its own; the streak card on Home and a child's
+points on Tasks lead to it.

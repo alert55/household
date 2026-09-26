@@ -318,6 +318,9 @@ button.link { padding: 0; font-family: inherit; background: none; border: 0; cur
   gap: 16px;
 }
 
+/* display:flex above would otherwise show an empty card when there is no streak. */
+.streak[hidden] { display: none; }
+
 .ring {
   flex: none;
   width: 62px;
@@ -345,6 +348,7 @@ button.link { padding: 0; font-family: inherit; background: none; border: 0; cur
 .streak__meta { font-size: 12.5px; color: #8B7742; margin-top: 3px; }
 
 .pips { display: flex; gap: 4px; margin-top: 9px; }
+.pips[hidden] { display: none; }
 .pip { flex: 1; height: 6px; border-radius: 99px; background: #EADFC2; }
 .pip.is-on { background: var(--gold); }
 
@@ -489,6 +493,7 @@ button.link { padding: 0; font-family: inherit; background: none; border: 0; cur
 
 .person-card__name { font-size: 13.5px; font-weight: 600; }
 .person-card__count { flex: 1; font-size: 12px; color: var(--faint); }
+.person-card__points { font-size: 12px; flex: none; }
 
 .streakpill {
   flex: none;
@@ -884,6 +889,32 @@ select.field {
 }
 
 .fab:hover { background: var(--terracotta-ink); }
+
+/* ── Rewards ───────────────────────────────────────────── */
+
+.balances { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.balances:empty { display: none; }
+.balance { padding: 15px 17px; display: flex; align-items: center; gap: 12px; }
+.balance__num { font-family: var(--serif); font-size: 28px; line-height: 1; }
+.balance__label { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+.rewards-card { padding: 16px 18px 8px; }
+.rewards { list-style: none; margin: 0; padding: 0; }
+.reward { padding: 12px 0; border-top: 1px solid var(--line); }
+.reward:first-child { border-top: 0; padding-top: 4px; }
+.reward__head { display: flex; align-items: baseline; gap: 8px; }
+.reward__title { flex: 1; font-size: 14.5px; font-weight: 500; }
+.reward__terms { font-size: 12px; color: var(--muted); flex: none; }
+.reward__head .rowedit { align-self: center; }
+
+.reward__who { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
+.reward__bar { flex: 1; min-width: 0; }
+.reward__bar .track { margin-top: 0; }
+.reward__bar .pips { margin-top: 0; }
+.reward__nums { font-size: 12px; color: var(--muted); flex: none; min-width: 52px; text-align: right; }
+.reward__who .chip { flex: none; }
+
+#rewards-empty { margin: 4px 0 10px; }
 
 @media (prefers-reduced-motion: no-preference) {
   .chip, .fab, .check { transition: background-color .15s ease; }

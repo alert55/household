@@ -111,7 +111,15 @@ _Avoid_: run, chain, combo
 
 **Reward**:
 Something a child obtains, either by spending points or by reaching a streak.
+A child asks for it and an adult approves, or an adult gives it outright. A
+streak reward comes round again each time the streak reaches another lot of
+its days.
 _Avoid_: prize, treat, bonus
+
+**Balance**:
+The points a child can spend now: everything earned, less what was spent,
+less what is asked for and not yet decided — those are held.
+_Avoid_: wallet, credit, total
 
 ### Money
 

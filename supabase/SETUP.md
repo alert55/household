@@ -29,7 +29,7 @@ Migration `0002` schedules the hourly job that keeps occurrences generated (ADR
 ## 3. Apply the migrations, one at a time, in order
 
 **SQL Editor → New query.** Paste `migrations/0001_initial_schema.sql`, run it.
-Then `0002`, `0003`, and so on up to `0011`.
+Then `0002`, `0003`, and so on up to `0012`.
 
 Do not skip `0010`. With automatic exposure off, the tables are unreachable
 until it grants access, and every query from the app fails with

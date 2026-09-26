@@ -133,6 +133,24 @@
         : (a.latest.due_on < b.latest.due_on ? 1 : -1));
   }
 
+  // The streak card's words and pips. With a streak reward on the task it counts
+  // towards that, as the design drew it: "Homework 5 days straight. 2 more →
+  // Movie night." Streak rewards repeat (0012), so the pips fill once per lap —
+  // 7, then 14 — and stay full while a lap's reward waits to be claimed.
+  function streakProgress(length, reward, status) {
+    if (!reward) return { target: 7, filled: Math.min(length, 7), note: 'Kept ' + length + ' days straight.' };
+    const days = reward.days;
+    const ready = Boolean(status) && status.earned - status.claimed > 0;
+    const into = ready ? days : length % days;
+    const lead = (reward.taskTitle ? reward.taskTitle + ' ' : '') + length + ' days straight. ';
+    return {
+      target: days,
+      filled: into,
+      ready: ready,
+      note: ready ? lead + reward.label + ' is earned.' : lead + (days - into) + ' more → ' + reward.label + '.'
+    };
+  }
+
   // "slipped Wednesday" for one miss; "slipped 9 times since Thu 17 Sep" for a
   // run of them — the first date says how long it has been going on.
   function slippedLabel(g, today) {
@@ -246,6 +264,42 @@
 
   demo.me = demo.members[demo.meKey] || demo.members.jamie;
 
+  // Rewards. Alex's homework streak is the one on the streak card, so Movie
+  // night is 2 days away, as the design says. `earned` is Alex's lifetime points.
+  demo.rewards = [
+    { id: 'r-movie', label: 'Movie night', kind: 'streak', days: 7, taskTitle: 'Homework', holder: 'alex' },
+    { id: 'r-icecream', label: 'Ice cream', kind: 'points', cost: 40 },
+    { id: 'r-zoo', label: 'Trip to the zoo', kind: 'points', cost: 150 }
+  ];
+  demo.earned = { alex: 125 };
+  demo.redemptions = [
+    { id: 'd-1', reward: 'r-icecream', member: 'alex', points: 40, status: 'approved', asked: false, by: 'jamie', when: 'Saturday' }
+  ];
+
+  function demoBalance(key) {
+    const spent = demo.redemptions.filter(d => d.member === key && d.status === 'approved').reduce((a, d) => a + d.points, 0);
+    const held = demo.redemptions.filter(d => d.member === key && d.status === 'requested').reduce((a, d) => a + d.points, 0);
+    return { available: (demo.earned[key] || 0) - spent - held, held: held };
+  }
+
+  // The same checks 0012 makes: a child, enough points, a streak lap unclaimed.
+  function demoRewardCost(r, key) {
+    if (!demo.members[key] || demo.members[key].role !== 'child') throw new Error('rewards are for children');
+    if (r.kind === 'points') {
+      const have = demoBalance(key).available;
+      if (have < r.cost) throw new Error('not enough points yet: ' + have + ' of ' + r.cost);
+      return r.cost;
+    }
+    if (!demoStreakReady(r, key)) throw new Error('the streak has not reached it yet');
+    return 0;
+  }
+
+  function demoStreakReady(r, key) {
+    const len = key === demo.streak.member ? demo.streak.days : 0;
+    const claimed = demo.redemptions.filter(d => d.reward === r.id && d.member === key && d.status !== 'declined').length;
+    return Math.floor(len / r.days) - claimed > 0;
+  }
+
   // Today's occurrences that still count. A skipped one is off the board and out
   // of every total — it was a decision, not a job left undone.
   function demoToday() {
@@ -356,7 +410,14 @@
         action: (mine || fromMe) ? null : 'Nudge',
         status: fromMe ? (fromMe.seen ? 'Seen' : 'Nudged') : null
       };
-    }).concat(bills);
+    }).concat(bills).concat(me.role !== 'adult' ? [] : demo.redemptions.filter(d => d.status === 'requested').map(d => ({
+      id: d.id,
+      kind: 'request',
+      title: demo.members[d.member].name + ' asked for ' + demo.rewards.find(r => r.id === d.reward).label,
+      meta: (d.points ? d.points + ' points · ' : 'Streak reward · ') + d.when,
+      action: 'Approve',
+      urgent: false
+    })));
   }
 
   const demoSource = {
@@ -481,6 +542,7 @@
         people: demoByPerson().map(p => ({
           key: p.key, name: p.name, initial: p.initial, accent: p.accent, role: p.role,
           done: p.done, total: p.total, streak: p.streak,
+          points: p.role === 'child' ? demoBalance(p.key).available : null,
           occurrences: p.occurrences.map(o => ({
             id: o.id,
             title: o.title,
@@ -566,6 +628,87 @@
       demo.members[key] = { key: key, name: name, initial: name.charAt(0).toUpperCase(), accent: accent, role: input.role };
       if (input.email) await this.inviteMember(key, input.email);
       return key;
+    },
+
+    async loadRewards() {
+      const kids = Object.keys(demo.members).map(k => demo.members[k]).filter(m => m.role === 'child');
+      const person = m => ({ key: m.key, name: m.name, initial: m.initial, accent: m.accent });
+      return {
+        me: { key: demo.me.key, role: demo.me.role },
+        children: kids.map(m => Object.assign(person(m), demoBalance(m.key))),
+        rewards: demo.rewards.filter(r => !r.retired).map(r => {
+          if (r.kind === 'points') {
+            return Object.assign({}, r, {
+              progress: kids.map(m => Object.assign(person(m), {
+                have: demoBalance(m.key).available, need: r.cost, ready: demoBalance(m.key).available >= r.cost
+              }))
+            });
+          }
+          return Object.assign({}, r, {
+            progress: kids.filter(m => m.key === r.holder).map(m => {
+              const len = m.key === demo.streak.member ? demo.streak.days : 0;
+              const ready = demoStreakReady(r, m.key);
+              return Object.assign(person(m), { have: ready ? r.days : len % r.days, need: r.days, ready: ready, length: len });
+            })
+          });
+        }),
+        requests: demo.redemptions.filter(d => d.status === 'requested').map(d => Object.assign(person(demo.members[d.member]), {
+          id: d.id, label: demo.rewards.find(r => r.id === d.reward).label, points: d.points, when: d.when,
+          mine: d.member === demo.me.key
+        })),
+        history: demo.redemptions.filter(d => d.status === 'approved').slice().reverse().map(d => Object.assign(person(demo.members[d.member]), {
+          id: d.id, label: demo.rewards.find(r => r.id === d.reward).label, points: d.points,
+          meta: (d.asked ? 'Asked, approved by ' : 'Given by ') + demo.members[d.by].name + ' · ' + d.when
+        }))
+      };
+    },
+
+    async loadTaskChoices() {
+      return [{ value: 'Homework', label: 'Homework' }, { value: 'Feed the dog', label: 'Feed the dog' }, { value: 'Tidy toys', label: 'Tidy toys' }];
+    },
+
+    async createReward(input) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can add a reward');
+      demo.rewards.push(input.kind === 'points'
+        ? { id: 'r-' + Date.now(), label: input.label, kind: 'points', cost: input.cost }
+        : { id: 'r-' + Date.now(), label: input.label, kind: 'streak', days: input.days, taskTitle: input.taskId, holder: 'alex' });
+      return true;
+    },
+
+    async updateReward(id, input) {
+      const r = demo.rewards.find(x => x.id === id);
+      r.label = input.label;
+      if (r.kind === 'points') r.cost = input.cost; else r.days = input.days;
+      return true;
+    },
+
+    async retireReward(id) {
+      demo.rewards.find(x => x.id === id).retired = true;
+      return true;
+    },
+
+    async requestReward(id) {
+      const r = demo.rewards.find(x => x.id === id);
+      const points = demoRewardCost(r, demo.me.key);
+      demo.redemptions.push({ id: 'd-' + Date.now(), reward: id, member: demo.me.key, points: points, status: 'requested', asked: true, when: 'today' });
+      return true;
+    },
+
+    async giveReward(id, key) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can give a reward');
+      const r = demo.rewards.find(x => x.id === id);
+      const points = demoRewardCost(r, key);
+      demo.redemptions.push({ id: 'd-' + Date.now(), reward: id, member: key, points: points, status: 'approved', asked: false, by: demo.me.key, when: 'today' });
+      return true;
+    },
+
+    async decideRedemption(id, approve) {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can decide that');
+      const d = demo.redemptions.find(x => x.id === id);
+      d.status = approve ? 'approved' : 'declined';
+      d.by = demo.me.key;
+      d.when = 'today';
+      return true;
     },
 
     async createTask(input) {
@@ -924,6 +1067,14 @@
           sb.from('nudge').select('occurrence_id, from_member_id, to_member_id, seen_at').eq('household_id', c.household.id).gte('nudged_on', addDays(today, -30))
         ]);
 
+        // Rewards (0012): what children have asked for, for an adult to decide,
+        // and the streak rewards the streak card counts towards.
+        const [asked, streakRewards, streakStatus] = await Promise.all([
+          sb.from('redemption').select('id, member_id, points_spent, redeemed_at, reward:reward_id (label)').eq('household_id', c.household.id).eq('status', 'requested').order('redeemed_at'),
+          sb.from('reward').select('id, label, streak_task_id, streak_days, task:streak_task_id (title)').eq('household_id', c.household.id).eq('active', true).not('streak_task_id', 'is', null),
+          sb.from('streak_reward_status').select('*').eq('household_id', c.household.id)
+        ]);
+
         const rows = openToday.data || [];
         const done = rows.filter(r => r.completed_at).length;
 
@@ -978,6 +1129,14 @@
           meta: b.due_on === today ? 'Due today' : 'Due ' + relativeDay(b.due_on, today),
           action: c.me.role === 'adult' ? 'Pay' : null,
           urgent: true
+        }))).concat(c.me.role !== 'adult' ? [] : (asked.data || []).map(d => ({
+          id: d.id,
+          kind: 'request',
+          title: (initialName(c, d.member_id) || 'Someone') + ' asked for ' + (d.reward ? d.reward.label : 'a reward'),
+          meta: (d.points_spent ? d.points_spent + ' points · ' : 'Streak reward · ') +
+            relativeDay(dateIn(d.redeemed_at, c.household.timezone), today),
+          action: 'Approve',
+          urgent: false
         })));
 
         const spent = (spend.data || []).reduce((a, r) => a + Number(r.amount), 0);
@@ -1010,12 +1169,13 @@
             })),
             remaining: rows.length
           },
-          streak: streak ? {
-            name: streakMember ? streakMember.display_name : '',
-            days: streak.length,
-            target: 7,
-            note: 'Kept ' + streak.length + ' days straight.'
-          } : null,
+          streak: streak ? (() => {
+            const r = (streakRewards.data || []).find(x => x.streak_task_id === streak.task_id);
+            const status = r && (streakStatus.data || []).find(s => s.reward_id === r.id && s.member_id === streak.member_id);
+            const p = streakProgress(streak.length,
+              r ? { days: r.streak_days, label: r.label, taskTitle: r.task ? r.task.title : '' } : null, status);
+            return Object.assign({ name: streakMember ? streakMember.display_name : '', days: streak.length }, p);
+          })() : null,
           pantry: {
             count: (low.data || []).length,
             items: (low.data || []).map(p => p.name).join(', ')
@@ -1042,15 +1202,17 @@
         const c = await context();
         const today = todayIn(c.household.timezone);
 
-        const [todayRes, slippedRes, streakRes, eventRes] = await Promise.all([
+        const [todayRes, slippedRes, streakRes, eventRes, balanceRes] = await Promise.all([
           sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('due_on', today).eq('skipped', false),
           sb.from('occurrence_current').select('*').eq('household_id', c.household.id).eq('slipped', true).lt('due_on', today).order('due_on'),
           sb.from('streak_current').select('*').eq('household_id', c.household.id),
-          sb.from('event').select('*').eq('household_id', c.household.id).is('skipped_at', null).gte('starts_at', new Date().toISOString()).order('starts_at').limit(5)
+          sb.from('event').select('*').eq('household_id', c.household.id).is('skipped_at', null).gte('starts_at', new Date().toISOString()).order('starts_at').limit(5),
+          sb.from('points_balance').select('member_id, available').eq('household_id', c.household.id)
         ]);
 
         const rows = todayRes.data || [];
         const streaks = streakRes.data || [];
+        const balances = balanceRes.data || [];
 
         // Timed first in time order, then the rest by name so the list is
         // stable between renders.
@@ -1076,6 +1238,10 @@
             done: mine.filter(r => r.completed_at).length,
             total: mine.length,
             streak: best ? { days: best.length, target: 7 } : null,
+            // A child's points to spend, shown on their card and linked to Rewards.
+            points: m.role === 'child'
+              ? Number((balances.find(b => b.member_id === m.id) || {}).available || 0)
+              : null,
             occurrences: mine.map(o => ({
               id: o.id,
               title: o.title,
@@ -1162,6 +1328,125 @@
         ctx = null;
         if (error) throw new Error(error.message);
         return id;
+      },
+
+      // ── Rewards (0012) ─────────────────────────────────────────────────
+
+      async loadRewards() {
+        const c = await context();
+        const tz = c.household.timezone;
+        const today = todayIn(tz);
+        const hh = c.household.id;
+
+        const [rewardRes, balanceRes, statusRes, askedRes, givenRes] = await Promise.all([
+          sb.from('reward').select('id, label, cost_points, streak_task_id, streak_days, task:streak_task_id (title, default_assignee_id)').eq('household_id', hh).eq('active', true).order('created_at'),
+          sb.from('points_balance').select('*').eq('household_id', hh),
+          sb.from('streak_reward_status').select('*').eq('household_id', hh),
+          sb.from('redemption').select('id, member_id, points_spent, redeemed_at, reward:reward_id (label)').eq('household_id', hh).eq('status', 'requested').order('redeemed_at'),
+          sb.from('redemption').select('id, member_id, points_spent, redeemed_at, decided_at, requested_by, decided_by, reward:reward_id (label)').eq('household_id', hh).eq('status', 'approved').order('decided_at', { ascending: false }).limit(10)
+        ]);
+        const failed = [rewardRes, balanceRes, statusRes, askedRes, givenRes].find(r => r.error);
+        if (failed) throw new Error(failed.error.message);
+
+        const person = m => ({ key: m.id, name: m.display_name, initial: initial(m), accent: m.accent });
+        const kids = c.members.filter(m => m.role === 'child');
+        const balance = id => balanceRes.data.find(b => b.member_id === id) || { available: 0, held: 0 };
+        const day = instant => relativeDay(dateIn(instant, tz), today);
+
+        return {
+          me: { key: c.me.id, role: c.me.role },
+          children: kids.map(m => Object.assign(person(m), {
+            available: Number(balance(m.id).available), held: Number(balance(m.id).held)
+          })),
+          rewards: rewardRes.data.map(r => {
+            if (r.cost_points) {
+              return {
+                id: r.id, label: r.label, kind: 'points', cost: r.cost_points,
+                progress: kids.map(m => Object.assign(person(m), {
+                  have: Number(balance(m.id).available), need: r.cost_points,
+                  ready: Number(balance(m.id).available) >= r.cost_points
+                }))
+              };
+            }
+            // A streak reward counts for whoever keeps the task's streak: its
+            // usual child, and any child with a run on it.
+            const rows = statusRes.data.filter(s => s.reward_id === r.id);
+            const holder = r.task && r.task.default_assignee_id;
+            const who = kids.filter(m => m.id === holder || rows.some(s => s.member_id === m.id));
+            return {
+              id: r.id, label: r.label, kind: 'streak', days: r.streak_days,
+              taskId: r.streak_task_id, taskTitle: r.task ? r.task.title : '',
+              progress: who.map(m => {
+                const s = rows.find(x => x.member_id === m.id);
+                const p = streakProgress(s ? s.length : 0, { days: r.streak_days, label: r.label }, s);
+                return Object.assign(person(m), { have: p.filled, need: r.streak_days, ready: p.ready, length: s ? s.length : 0 });
+              })
+            };
+          }),
+          requests: askedRes.data.map(d => Object.assign(person(byId(c.members, d.member_id) || { id: d.member_id, display_name: '?', accent: 'sage' }), {
+            id: d.id, label: d.reward ? d.reward.label : 'A reward', points: d.points_spent,
+            when: day(d.redeemed_at), mine: d.member_id === c.me.id
+          })),
+          history: givenRes.data.map(d => Object.assign(person(byId(c.members, d.member_id) || { id: d.member_id, display_name: '?', accent: 'sage' }), {
+            id: d.id, label: d.reward ? d.reward.label : 'A reward', points: d.points_spent,
+            meta: (d.requested_by === d.member_id ? 'Asked, approved by ' : 'Given by ') +
+              (initialName(c, d.decided_by) || 'an adult') + ' · ' + day(d.decided_at || d.redeemed_at)
+          }))
+        };
+      },
+
+      // Repeating tasks only: a streak needs something that comes back.
+      async loadTaskChoices() {
+        const c = await context();
+        const { data, error } = await sb.from('task').select('id, title').eq('household_id', c.household.id)
+          .eq('active', true).neq('recurrence_freq', 'once').order('title');
+        if (error) throw new Error(error.message);
+        return data.map(t => ({ value: t.id, label: t.title }));
+      },
+
+      async createReward(input) {
+        const c = await context();
+        const row = { household_id: c.household.id, label: input.label };
+        if (input.kind === 'points') row.cost_points = input.cost;
+        else { row.streak_task_id = input.taskId; row.streak_days = input.days; }
+        const { error } = await sb.from('reward').insert(row);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async updateReward(id, input) {
+        const patch = { label: input.label };
+        if (input.kind === 'points') patch.cost_points = input.cost;
+        else patch.streak_days = input.days;
+        const { error } = await sb.from('reward').update(patch).eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      // Retired, not deleted: what was already given stays in the history and
+      // the points spent on it stay spent.
+      async retireReward(id) {
+        const { error } = await sb.from('reward').update({ active: false }).eq('id', id);
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async requestReward(id) {
+        const { error } = await sb.rpc('request_reward', { target_reward: id });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async giveReward(id, memberKey) {
+        const { error } = await sb.rpc('give_reward', { target_reward: id, target_member: memberKey });
+        if (error) throw new Error(error.message);
+        return true;
+      },
+
+      async decideRedemption(id, approve) {
+        const { error } = await sb.rpc('decide_redemption', { target_redemption: id, approve: approve });
+        if (error) throw new Error(error.message);
+        return true;
       },
 
       // Inserting the task is enough: the trigger from 0002 materialises its

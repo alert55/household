@@ -8,7 +8,7 @@
   // scroll restoration fires after render and would undo that on every reload.
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
-  const TITLES = { home: 'Home', tasks: 'Tasks', kitchen: 'Kitchen', money: 'Money' };
+  const TITLES = { home: 'Home', tasks: 'Tasks', kitchen: 'Kitchen', money: 'Money', rewards: 'Rewards' };
   const DEFAULT_VIEW = 'home';
 
   const views = document.querySelectorAll('.view');
@@ -109,9 +109,11 @@
     button.textContent = '…';
     try {
       if (item.kind === 'bill') await data.payBill(item.id);
+      else if (item.kind === 'request') await data.decideRedemption(item.id, true);
       else await data.sendNudge(item.id);
 
-      flash(item.kind === 'bill' ? 'Paid, and recorded as an expense.' : 'Nudged.', 'good');
+      flash(item.kind === 'bill' ? 'Paid, and recorded as an expense.'
+        : item.kind === 'request' ? 'Approved.' : 'Nudged.', 'good');
       await refreshHome();
     } catch (err) {
       button.disabled = false;
@@ -208,12 +210,21 @@
     $('streak-title').textContent = streak.name + ' is on a streak';
     $('streak-note').textContent = streak.note;
 
-    const pips = $('streak-pips');
-    pips.setAttribute('aria-valuenow', String(streak.days));
+    // `filled` is progress through this lap towards the reward (0012 repeats
+    // them); the design's card had only `days`, which is the same on lap one.
+    const on = streak.filled === undefined ? streak.days : streak.filled;
+    fill($('streak-pips'), pipsFor(on, streak.target));
+  }
+
+  // One pip per day towards a target. Past two weeks the pips would be slivers,
+  // so the bar goes unshown and the words carry it.
+  function pipsFor(on, target, node) {
+    const pips = node || $('streak-pips');
+    pips.hidden = target > 14;
+    pips.setAttribute('aria-valuenow', String(on));
     pips.setAttribute('aria-valuemin', '0');
-    pips.setAttribute('aria-valuemax', String(streak.target));
-    fill(pips, Array.from({ length: streak.target }, (_, i) =>
-      el('i', 'pip' + (i < streak.days ? ' is-on' : ''))));
+    pips.setAttribute('aria-valuemax', String(target));
+    return Array.from({ length: Math.min(target, 14) }, (_, i) => el('i', 'pip' + (i < on ? ' is-on' : '')));
   }
 
   function renderUpcoming(event) {
@@ -306,6 +317,13 @@
 
       if (p.streak) {
         head.appendChild(el('span', 'streakpill', p.streak.days + ' days'));
+      }
+      // A child's points to spend, one tap from what they can buy with them.
+      if (p.points !== null && p.points !== undefined) {
+        const pts = el('a', 'link person-card__points', p.points + ' pts →');
+        pts.href = '#rewards';
+        pts.setAttribute('aria-label', p.name + ' has ' + p.points + ' points. Open Rewards');
+        head.appendChild(pts);
       }
       card.appendChild(head);
 
@@ -561,6 +579,176 @@
     }));
   }
 
+  // ── Rendering: rewards ─────────────────────────────────────────────────
+
+  async function refreshRewards() {
+    const r = await data.loadRewards();
+    const isAdult = r.me.role === 'adult';
+
+    // Each child's points to spend. Held points are asked for and not yet
+    // decided, so they are not spendable twice (0012).
+    fill($('balances'), r.children.map(k => {
+      const card = el('section', 'card balance');
+      const avatar = el('span', 'avatar avatar--sm avatar--' + k.accent, k.initial);
+      avatar.setAttribute('aria-hidden', 'true');
+      card.appendChild(avatar);
+      const body = el('div');
+      body.appendChild(el('p', 'balance__num', String(k.available)));
+      body.appendChild(el('p', 'balance__label', k.name + (k.key === r.me.key ? ' (you)' : '') +
+        ' · points' + (k.held ? ' · ' + k.held + ' on hold' : '')));
+      card.appendChild(body);
+      return card;
+    }));
+
+    // What children have asked for: an adult decides; the child sees it waiting.
+    const asked = $('asked-card');
+    asked.hidden = !r.requests.length;
+    $('asked-h').textContent = 'Asked for · ' + r.requests.length;
+    fill($('asked-list'), r.requests.map(q => {
+      const row = el('li', 'needs__row');
+      row.appendChild(el('span', 'dot dot--calm'));
+      const text = el('div', 'needs__text');
+      text.appendChild(el('p', 'needs__title', q.label));
+      text.appendChild(el('p', 'needs__meta', q.name + ' · ' + (q.points ? q.points + ' points' : 'streak reward') + ' · ' + q.when));
+      row.appendChild(text);
+      if (isAdult) {
+        row.appendChild(rewardAction('Decline', () => data.decideRedemption(q.id, false), 'Declined. The points are free again.'));
+        row.appendChild(rewardAction('Approve', () => data.decideRedemption(q.id, true), 'Approved.'));
+      } else {
+        row.appendChild(el('span', 'chip chip--quiet', 'Waiting'));
+      }
+      return row;
+    }));
+
+    $('rewards-count').textContent = r.rewards.length ? r.rewards.length + ' on offer' : '';
+    const empty = $('rewards-empty');
+    empty.hidden = r.rewards.length > 0;
+    empty.textContent = isAdult
+      ? 'No rewards yet. Add one with the + button: something bought with points, or earned by keeping a streak.'
+      : 'No rewards yet. Ask an adult to add some.';
+
+    fill($('rewards-list'), r.rewards.map(w => {
+      const li = el('li', 'reward');
+      const head = el('div', 'reward__head');
+      head.appendChild(el('span', 'reward__title', w.label));
+      head.appendChild(el('span', 'reward__terms', w.kind === 'points'
+        ? w.cost + ' points'
+        : 'every ' + w.days + ' days of ' + (w.taskTitle || 'a task') + ' in a row'));
+      if (isAdult) head.appendChild(editButton('Edit ' + w.label, () => editReward(w)));
+      li.appendChild(head);
+
+      if (!w.progress.length) {
+        li.appendChild(hint(w.kind === 'streak' ? 'Nobody is keeping this streak yet.' : 'No children in the household yet.'));
+      }
+      w.progress.forEach(p => {
+        const who = el('div', 'reward__who');
+        const avatar = el('span', 'avatar avatar--xs avatar--' + p.accent, p.initial);
+        avatar.setAttribute('aria-label', p.name);
+        who.appendChild(avatar);
+
+        const bar = el('div', 'reward__bar');
+        if (w.kind === 'points') {
+          const track = el('span', 'track track--thick');
+          track.setAttribute('role', 'progressbar');
+          track.setAttribute('aria-label', p.name + ' towards ' + w.label);
+          track.setAttribute('aria-valuenow', String(Math.max(0, p.have)));
+          track.setAttribute('aria-valuemin', '0');
+          track.setAttribute('aria-valuemax', String(p.need));
+          const fillBar = el('span', 'track__fill track__fill--gold');
+          fillBar.style.width = Math.max(0, Math.min(100, Math.round((p.have / p.need) * 100))) + '%';
+          track.appendChild(fillBar);
+          bar.appendChild(track);
+        } else {
+          const pips = el('span', 'pips');
+          pips.setAttribute('role', 'progressbar');
+          pips.setAttribute('aria-label', p.name + ' towards ' + w.label);
+          fill(pips, pipsFor(p.have, p.need, pips));
+          bar.appendChild(pips);
+        }
+        who.appendChild(bar);
+
+        who.appendChild(el('span', 'reward__nums', w.kind === 'points'
+          ? Math.max(0, p.have) + ' / ' + p.need
+          : (p.ready ? 'earned' : p.have + ' / ' + p.need + ' days')));
+
+        // The child asks for their own; an adult gives to any child.
+        if (p.ready && p.key === r.me.key) {
+          who.appendChild(rewardAction('Ask for it', () => data.requestReward(w.id),
+            'Asked. An adult will say yes or no.', 'chip chip--cream'));
+        } else if (p.ready && isAdult) {
+          who.appendChild(rewardAction('Give', () => data.giveReward(w.id, p.key),
+            'Given to ' + p.name + '.', 'chip chip--quiet chip--light'));
+        }
+        li.appendChild(who);
+      });
+      return li;
+    }));
+
+    $('given-card').hidden = !r.history.length;
+    fill($('given-list'), r.history.map(h => {
+      const li = el('li', 'entry');
+      const avatar = el('span', 'avatar avatar--xs avatar--' + h.accent, h.initial);
+      avatar.setAttribute('aria-hidden', 'true');
+      li.appendChild(avatar);
+      const body = el('span', 'entry__body');
+      body.appendChild(el('span', 'entry__title', h.label + ' · ' + h.name));
+      body.appendChild(el('span', 'entry__meta', h.meta));
+      li.appendChild(body);
+      li.appendChild(el('span', 'entry__amount', h.points ? '−' + h.points : 'streak'));
+      return li;
+    }));
+  }
+
+  // A button that does one thing, says so, and redraws the screen.
+  function rewardAction(label, run, done, className) {
+    const b = el('button', className || 'chip', label);
+    b.type = 'button';
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await run();
+        flash(done, 'good');
+      } catch (err) {
+        flash(err.message || 'That did not work.', 'bad');
+      }
+      await refreshRewards();
+    });
+    return b;
+  }
+
+  function editReward(w) {
+    const label = input('text', 'label', { required: 'required' });
+    label.value = w.label;
+    const fields = [field('What', label)];
+    if (w.kind === 'points') {
+      const cost = input('number', 'cost', { min: '1', step: '1', required: 'required' });
+      cost.value = String(w.cost);
+      fields.push(field('Points it costs', cost));
+      fields.push(hint('A new price applies from now on. What was already given keeps what it cost.'));
+    } else {
+      const days = input('number', 'days', { min: '1', max: '365', step: '1', required: 'required' });
+      days.value = String(w.days);
+      fields.push(field('Days in a row of ' + (w.taskTitle || 'the task'), days));
+    }
+    openEditor({
+      title: 'Edit reward',
+      fields: fields,
+      save: async get => {
+        if (!get('label')) throw new Error('Give it a name.');
+        const n = Number(get(w.kind === 'points' ? 'cost' : 'days'));
+        if (!(n > 0)) throw new Error(w.kind === 'points' ? 'How many points?' : 'How many days?');
+        await data.updateReward(w.id, { kind: w.kind, label: get('label'), cost: n, days: n });
+      },
+      actions: [{
+        label: 'Remove reward',
+        danger: true,
+        confirm: 'Tap again to remove it',
+        run: () => data.retireReward(w.id),
+        done: 'Removed. What was already given stays in the history.'
+      }]
+    });
+  }
+
   // ── Adding things ──────────────────────────────────────────────────────
 
   // What the + offers. `adults` marks the kinds the policies in 0001 reserve
@@ -571,11 +759,14 @@
     { key: 'event', label: 'Event', adults: true, screen: null },
     { key: 'expense', label: 'Expense', adults: false, screen: 'money' },
     { key: 'pantry', label: 'Pantry item', adults: false, screen: 'kitchen' },
-    { key: 'bill', label: 'Bill', adults: true, screen: 'money' }
+    { key: 'bill', label: 'Bill', adults: true, screen: 'money' },
+    { key: 'reward', label: 'Reward', adults: true, screen: 'rewards' }
   ];
 
   let sheetKind = 'task';
   let roster = null;
+  // Repeating tasks, for a streak reward to count. Loaded when the sheet opens.
+  let taskChoices = [];
 
   function field(label, control) {
     const wrap = el('label', 'field-row');
@@ -709,6 +900,30 @@
         ]))
       ]);
 
+    } else if (sheetKind === 'reward') {
+      // Either points or a streak, never both (one_way_to_earn in 0001), so the
+      // form shows the one chosen.
+      const how = select('earnedBy', [
+        { value: 'points', label: 'Spending points' },
+        { value: 'streak', label: 'Keeping a streak' }
+      ]);
+      const costRow = field('Points it costs', input('number', 'cost', { min: '1', step: '1', placeholder: '50' }));
+      const taskRow = field('Which task', select('taskId', taskChoices.length ? taskChoices : [{ value: '', label: 'No repeating tasks yet' }]));
+      const daysRow = field('Days in a row', input('number', 'days', { min: '1', max: '365', step: '1', value: '7' }));
+      const streakHint = hint('Earned again every time the streak reaches another lot of days. A missed day starts the count over; a skipped day does not.');
+      const sync = () => {
+        const streak = how.value === 'streak';
+        costRow.hidden = streak;
+        taskRow.hidden = daysRow.hidden = streakHint.hidden = !streak;
+      };
+      how.addEventListener('change', sync);
+      fill(box, [
+        field('What', input('text', 'label', { placeholder: 'Movie night', required: 'required' })),
+        field('Earned by', how),
+        costRow, taskRow, daysRow, streakHint
+      ]);
+      sync();
+
     } else {
       const dueOn = input('date', 'dueOn', { value: new Date().toISOString().slice(0, 10), required: 'required' });
       // Monthly first: that is what almost every household bill is.
@@ -759,6 +974,7 @@
   async function openSheet() {
     try {
       roster = await data.loadMembers();
+      taskChoices = roster.me.role === 'adult' ? await data.loadTaskChoices() : [];
     } catch (err) {
       flash('Could not load the household — ' + (err.message || 'try again'), 'bad');
       return;
@@ -1172,6 +1388,18 @@
       } else if (sheetKind === 'pantry') {
         if (!get('name')) throw new Error('Give it a name.');
         await data.createPantryItem({ name: get('name'), low: get('low') === 'yes' });
+      } else if (sheetKind === 'reward') {
+        if (!get('label')) throw new Error('Give it a name.');
+        if (get('earnedBy') === 'points') {
+          const cost = Number(get('cost'));
+          if (!(cost > 0)) throw new Error('How many points does it cost?');
+          await data.createReward({ label: get('label'), kind: 'points', cost: cost });
+        } else {
+          const days = Number(get('days'));
+          if (!get('taskId')) throw new Error('A streak needs a task that repeats. Add one first.');
+          if (!(days > 0)) throw new Error('How many days in a row?');
+          await data.createReward({ label: get('label'), kind: 'streak', taskId: get('taskId'), days: days });
+        }
       } else {
         const amount = Number(get('amount'));
         if (!get('label')) throw new Error('Give it a name.');
@@ -1377,6 +1605,7 @@
       if (name === 'tasks') await refreshTasks();
       if (name === 'kitchen') await refreshKitchen();
       if (name === 'money') await refreshMoney();
+      if (name === 'rewards') await refreshRewards();
     } catch (err) {
       banner('Could not load — ' + (err.message || 'unknown error'), 'bad');
     }
