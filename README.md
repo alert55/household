@@ -8,14 +8,24 @@ hardcoded; this is a faithful rendering of a single state, not a working app yet
 
 ## Running it
 
-Any static file server will do:
+On a new machine — a Mac included — nothing needs installing beyond Git and
+Python 3, which macOS offers to install the first time either is used:
 
 ```bash
-python -m http.server 8792 --bind 127.0.0.1
+git clone https://github.com/alert55/household.git
+python3 -m http.server 8792 --bind 127.0.0.1 --directory household
 ```
 
-Then open <http://127.0.0.1:8792>. Opening `index.html` directly off disk also
-works, but relative asset paths behave better over HTTP.
+Then open **http://localhost:8792** — `localhost`, not `127.0.0.1`: sign-in
+links only return to the address listed in the Supabase project. `config.js`
+already points at the live project, so signing in with the household's email
+shows the household. Nothing else is stored on the machine.
+
+Opening `index.html` directly off disk does not work: sign-in needs a real
+address to come back to.
+
+To work on the SQL, the checks in [tools/](./tools) need `uv`
+(`brew install uv`) and Node (`brew install node`).
 
 ## Layout
 
