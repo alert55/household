@@ -112,6 +112,34 @@
       MONTHS[Number(iso.slice(5, 7)) - 1];
   }
 
+  // Slipped occurrences, one group per task and assignee, newest miss first.
+  // Listed one by one, a week nobody ticked anything reads as the same seven
+  // chores over and over; grouped, it reads as which chores keep slipping and
+  // for whom. The occurrences themselves are untouched — this is only a view.
+  // An occurrence reassigned to someone else is grouped with them, not the task.
+  function groupSlipped(rows) {
+    const groups = new Map();
+    rows.forEach(o => {
+      const key = o.task_id + '|' + (o.effective_assignee_id || '');
+      const g = groups.get(key);
+      if (!g) { groups.set(key, { first: o, latest: o, rows: [o] }); return; }
+      g.rows.push(o);
+      if (o.due_on < g.first.due_on) g.first = o;
+      if (o.due_on > g.latest.due_on) g.latest = o;
+    });
+    return Array.from(groups.values()).sort((a, b) =>
+      a.latest.due_on === b.latest.due_on
+        ? a.latest.title.localeCompare(b.latest.title)
+        : (a.latest.due_on < b.latest.due_on ? 1 : -1));
+  }
+
+  // "slipped Wednesday" for one miss; "slipped 9 times since Thu 17 Sep" for a
+  // run of them — the first date says how long it has been going on.
+  function slippedLabel(g, today) {
+    if (g.rows.length === 1) return 'slipped ' + relativeDay(g.latest.due_on, today);
+    return 'slipped ' + g.rows.length + ' times since ' + relativeDay(g.first.due_on, today);
+  }
+
   // The wall-clock hour and minute of an instant, read in a given timezone.
   // Without the zone this was the browser's clock — so a phone abroad showed a
   // 5:30pm swim class at whatever 5:30pm Bangkok is where the phone happened to be.
@@ -875,21 +903,25 @@
 
         const allNudges = nudges.data || [];
 
-        const needsYou = (slipped.data || []).map(o => {
+        const needsYou = groupSlipped(slipped.data || []).map(g => {
+          const o = g.latest;
+          const ids = g.rows.map(r => r.id);
           const mine = o.effective_assignee_id === c.me.id;
-          const on = allNudges.filter(n => n.occurrence_id === o.id);
-          const fromMe = on.find(n => n.from_member_id === c.me.id);
-          const toMe = on.filter(n => n.to_member_id === c.me.id);
-          const slippedLabel = 'slipped ' + relativeDay(o.due_on, today);
+          // Whoever nudged about any miss in the run is still waiting on you.
+          const toMe = allNudges.filter(n => ids.includes(n.occurrence_id) && n.to_member_id === c.me.id);
+          // But a nudge is about one miss, and the row stands for the latest:
+          // once a newer one slips, you may nudge about that one.
+          const fromMe = allNudges.find(n => n.occurrence_id === o.id && n.from_member_id === c.me.id);
+          const label = slippedLabel(g, today);
 
           // If people are waiting on you, say who — that is the whole point of
           // a nudge, and it belongs where you already look.
           let meta;
           if (mine && toMe.length) {
-            const names = toMe.map(n => initialName(c, n.from_member_id)).filter(Boolean);
-            meta = names.join(' and ') + ' nudged you · ' + slippedLabel;
+            const names = Array.from(new Set(toMe.map(n => initialName(c, n.from_member_id)).filter(Boolean)));
+            meta = names.join(' and ') + ' nudged you · ' + label;
           } else {
-            meta = (initialName(c, o.effective_assignee_id) || 'Unassigned') + ' · ' + slippedLabel;
+            meta = (initialName(c, o.effective_assignee_id) || 'Unassigned') + ' · ' + label;
           }
 
           return {
@@ -1031,11 +1063,11 @@
 
         return {
           date: dayName(today) + ', ' + MONTHS[Number(today.slice(5, 7)) - 1] + ' ' + Number(today.slice(8, 10)),
-          slipped: (slippedRes.data || []).map(o => ({
-            id: o.id,
-            title: o.title,
-            meta: (initialName(c, o.effective_assignee_id) || 'Unassigned') +
-              ' · slipped ' + relativeDay(o.due_on, today)
+          slipped: groupSlipped(slippedRes.data || []).map(g => ({
+            id: g.latest.id,
+            title: g.latest.title,
+            meta: (initialName(c, g.latest.effective_assignee_id) || 'Unassigned') +
+              ' · ' + slippedLabel(g, today)
           })),
           people: people,
           events: (eventRes.data || []).map(e => {

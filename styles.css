@@ -191,6 +191,10 @@ a:hover { color: var(--terracotta-ink); }
 .needs__row:first-child { padding-top: 0; border-bottom: 1px solid var(--hairline); }
 .needs__row:last-child { padding-bottom: 0; }
 
+/* "3 more on Tasks →" / "Show 3 more": lined up with the titles, past the dot. */
+.needs__more { padding-left: 18px; }
+button.link { padding: 0; font-family: inherit; background: none; border: 0; cursor: pointer; }
+
 .dot {
   width: 7px;
   height: 7px;

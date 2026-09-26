@@ -56,13 +56,22 @@
 
   // ── Rendering: home ────────────────────────────────────────────────────
 
+  // Home shows the five most recent slipped chores and every bill: a long run
+  // of slips must not push a bill due today off the screen. The rest are one
+  // tap away on Tasks, which lists them all.
+  const HOME_SLIPPED = 5;
+
   function renderNeeds(items) {
     const card = $('needs-card');
     if (!items || !items.length) { card.hidden = true; return; }
     card.hidden = false;
     $('needs-h').textContent = 'Needs you · ' + items.length;
 
-    fill($('needs-list'), items.map(item => {
+    const slipped = items.filter(i => i.kind === 'occurrence');
+    const shown = slipped.slice(0, HOME_SLIPPED).concat(items.filter(i => i.kind !== 'occurrence'));
+    const more = slipped.length - Math.min(slipped.length, HOME_SLIPPED);
+
+    fill($('needs-list'), shown.map(item => {
       const row = el('li', 'needs__row');
       row.appendChild(el('span', 'dot' + (item.urgent ? '' : ' dot--calm')));
 
@@ -83,7 +92,15 @@
         row.appendChild(el('span', 'chip chip--quiet', item.status));
       }
       return row;
-    }));
+    }).concat(more ? [moreRow(el('a', 'link link--dim', more + ' more on Tasks →'), '#tasks')] : []));
+  }
+
+  // The last row of a capped list: a link elsewhere, or a button that expands.
+  function moreRow(control, href) {
+    const li = el('li', 'needs__row needs__more');
+    if (href) control.href = href;
+    li.appendChild(control);
+    return li;
   }
 
   async function act(item, button) {
@@ -238,6 +255,30 @@
 
   // ── Rendering: tasks ───────────────────────────────────────────────────
 
+  // Slipped chores arrive grouped, so ten rows is ten different chores — past
+  // that, the rest wait behind a button rather than pushing today off-screen.
+  const CARRIED_SHOWN = 10;
+
+  function renderCarried(slipped, all) {
+    const shown = all ? slipped : slipped.slice(0, CARRIED_SHOWN);
+    const rows = shown.map(o => {
+      const row = el('li', 'needs__row');
+      row.appendChild(el('span', 'dot'));
+      const text = el('div', 'needs__text');
+      text.appendChild(el('p', 'needs__title', o.title));
+      text.appendChild(el('p', 'needs__meta', o.meta));
+      row.appendChild(text);
+      return row;
+    });
+    if (shown.length < slipped.length) {
+      const button = el('button', 'link link--dim', 'Show ' + (slipped.length - shown.length) + ' more');
+      button.type = 'button';
+      button.addEventListener('click', () => renderCarried(slipped, true));
+      rows.push(moreRow(button));
+    }
+    fill($('carried-list'), rows);
+  }
+
   async function refreshTasks() {
     const [t, roster] = await Promise.all([data.loadTasks(), data.loadMembers()]);
     const isAdult = roster.me.role === 'adult';
@@ -249,15 +290,7 @@
     } else {
       carried.hidden = false;
       $('carried-h').textContent = 'Carried over · ' + t.slipped.length;
-      fill($('carried-list'), t.slipped.map(o => {
-        const row = el('li', 'needs__row');
-        row.appendChild(el('span', 'dot'));
-        const text = el('div', 'needs__text');
-        text.appendChild(el('p', 'needs__title', o.title));
-        text.appendChild(el('p', 'needs__meta', o.meta));
-        row.appendChild(text);
-        return row;
-      }));
+      renderCarried(t.slipped, false);
     }
 
     fill($('people-cards'), t.people.map(p => {
