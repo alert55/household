@@ -130,10 +130,11 @@ The hourly job runs unattended: fifteen consecutive successes over its first day
 each extending the horizon, with no duplicates — the unique key on
 (task_id, due_on) doing the work ADR 0002 asked of it.
 
-Nudges are the one path still unexercised against the live project, since that
-needs two people signed in — which invites now make possible without SQL: an
-adult invites someone from the Household sheet (your initial on Home), and
-their first sign-in with that address makes them that member (ADR 0006).
+Invites have been used for real: a second adult was invited from the Household
+sheet (your initial on Home), and their first sign-in — a code emailed through
+the project's own mail server — linked their new account to the member made
+for them (ADR 0006). With two people signed in, nudges between them are the
+one path left to try on the live project.
 
 Nudge and Pay work, but a nudge only waits for the other person to open the app
 — push to their device is not something ADR 0004 gives us for free.
