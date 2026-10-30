@@ -686,6 +686,9 @@ select.field {
 
 .sheet__action.is-danger { color: var(--terracotta-ink); }
 
+/* "Clear all" on the dark cards, armed: the same warning colour as the dots. */
+.clear-slipped.is-armed { color: var(--terracotta); font-weight: 500; }
+
 /* The first tap arms it; it says what the second tap will do. */
 .sheet__action.is-armed {
   background: var(--terracotta);

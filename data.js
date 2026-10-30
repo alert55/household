@@ -587,6 +587,13 @@
       return true;
     },
 
+    async clearSlipped() {
+      if (demo.me.role !== 'adult') throw new Error('only an adult can clear slipped tasks');
+      const n = demo.needsYou.filter(i => i.kind === 'occurrence').length;
+      demo.needsYou = demo.needsYou.filter(i => i.kind !== 'occurrence');
+      return n;
+    },
+
     // Retiring skips today's if it is not done, as the database does. Past
     // occurrences would stay; the demo simply has none to show.
     async retireTask(id) {
@@ -1153,7 +1160,7 @@
         return {
           date: dayName(today) + ', ' + MONTHS[Number(today.slice(5, 7)) - 1] + ' ' + Number(today.slice(8, 10)),
           greeting: 'Morning, ' + c.me.display_name,
-          me: { name: c.me.display_name, initial: initial(c.me), accent: c.me.accent },
+          me: { name: c.me.display_name, initial: initial(c.me), accent: c.me.accent, role: c.me.role },
           needsYou: needsYou,
           today: {
             done: done,
@@ -1724,6 +1731,13 @@
         const { error } = await sb.rpc('skip_occurrence', { p_occurrence: id });
         if (error) throw new Error(error.message);
         return true;
+      },
+
+      // Skips every slipped chore at once; returns how many. See 0014.
+      async clearSlipped() {
+        const { data: n, error } = await sb.rpc('clear_slipped');
+        if (error) throw new Error(error.message);
+        return n || 0;
       },
 
       async retireTask(occurrenceId, taskId) {

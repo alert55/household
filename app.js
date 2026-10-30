@@ -103,6 +103,38 @@
     return li;
   }
 
+  // "Clear all", on Needs you and on Carried over: skips every slipped chore
+  // (0014). Adults only, and only when something has slipped. Like every other
+  // button here that cannot be undone in one tap, the first tap only arms it.
+  function setupClear(isAdult, slippedCount) {
+    document.querySelectorAll('.clear-slipped').forEach(b => {
+      b.hidden = !isAdult || !slippedCount;
+      b.disabled = false;
+      b.classList.remove('is-armed');
+      b.textContent = 'Clear all';
+      b.onclick = async () => {
+        if (!b.classList.contains('is-armed')) {
+          b.classList.add('is-armed');
+          b.textContent = 'Tap again to skip them all';
+          setTimeout(() => {
+            if (b.classList.contains('is-armed')) { b.classList.remove('is-armed'); b.textContent = 'Clear all'; }
+          }, 4000);
+          return;
+        }
+        b.disabled = true;
+        b.textContent = '…';
+        try {
+          const n = await data.clearSlipped();
+          flash(n === 1 ? '1 slipped task skipped.' : n + ' slipped tasks skipped.', 'good');
+          await Promise.all([refreshHome(), refreshTasks()]);
+        } catch (err) {
+          setupClear(isAdult, slippedCount);
+          flash(err.message || 'That did not work.', 'bad');
+        }
+      };
+    });
+  }
+
   async function act(item, button) {
     const was = button.textContent;
     button.disabled = true;
@@ -248,6 +280,7 @@
     avatar.className = 'avatar avatar--' + board.me.accent;
 
     renderNeeds(board.needsYou);
+    setupClear(board.me.role === 'adult', (board.needsYou || []).filter(i => i.kind === 'occurrence').length);
     renderPeople(board.today.people);
     renderTasks(board.today);
     renderStreak(board.streak);
@@ -303,6 +336,7 @@
       $('carried-h').textContent = 'Carried over · ' + t.slipped.length;
       renderCarried(t.slipped, false);
     }
+    setupClear(isAdult, t.slipped.length);
 
     fill($('people-cards'), t.people.map(p => {
       const card = el('section', 'card person-card');
